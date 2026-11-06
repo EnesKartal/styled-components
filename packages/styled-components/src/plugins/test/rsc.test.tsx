@@ -410,102 +410,9 @@ describe('rscPlugin', () => {
     expect(rscPlugin.name).toBe('rsc');
   });
 
+  // The `+` combinator is handled by the emitter in server component output, not by the plugin.
   describe('adjacent sibling combinator (+)', () => {
-    it('should expand & + & to handle interleaved style tags', () => {
-      const Item = styled.div`
-        & + & {
-          margin-top: 8px;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".sc-a+.sc-a,.sc-a+style[data-styled]+.sc-a,.sc-a+style[data-styled]+style[data-styled]+.sc-a {margin-top: 8px;}"`
-      );
-    });
-
-    it('should expand .item + & with interleaved style tags', () => {
-      const Item = styled.div`
-        .item + & {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".item+.b,.item+style[data-styled]+.b,.item+style[data-styled]+style[data-styled]+.b {color: red;}"`
-      );
-    });
-
-    it('should expand & + .sibling with interleaved style tags', () => {
-      const Item = styled.div`
-        & + .sibling {
-          color: blue;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".b+.sibling,.b+style[data-styled]+.sibling,.b+style[data-styled]+style[data-styled]+.sibling {color: blue;}"`
-      );
-    });
-
-    it('should not expand ~ (general sibling)', () => {
-      const Item = styled.div`
-        & ~ & {
-          color: green;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-        </StyleSheetManager>
-      );
-
-      // ~ is immune;no expansion needed
-      expect(getInjectedCSS()).toMatchInlineSnapshot(`".sc-a~.sc-a {color: green;}"`);
-    });
-
-    it('should not expand + inside :nth-child(2n+1)', () => {
-      const Item = styled.li`
-        &:nth-child(2n + 1) {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <ul>
-            <Item>Item</Item>
-          </ul>
-        </StyleSheetManager>
-      );
-
-      // The + inside (2n+1) must not be treated as a combinator
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".b:nth-child(2n + 1 of :not(style[data-styled])) {color: red;}"`
-      );
-    });
-
-    it('should apply both sibling expansion and child-index rewriting on the same selector', () => {
+    it('leaves + alone and still rewrites a child-index pseudo on the same selector', () => {
       const Item = styled.div`
         & + &:first-child {
           color: red;
@@ -519,73 +426,13 @@ describe('rscPlugin', () => {
       );
 
       expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".b+.b:nth-child(1 of :not(style[data-styled])),.b+style[data-styled]+.b:nth-child(1 of :not(style[data-styled])),.b+style[data-styled]+style[data-styled]+.b:nth-child(1 of :not(style[data-styled])) {color: red;}"`
+        `".b+.b:nth-child(1 of :not(style[data-styled])) {color: red;}"`
       );
     });
 
-    it('should expand multiple + combinators independently', () => {
+    it('leaves a selector with + but no child-index pseudo as it was', () => {
       const Item = styled.div`
-        & + & + & {
-          color: purple;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-          <Item>C</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".sc-a+.sc-a+.sc-a,.sc-a+style[data-styled]+.sc-a+.sc-a,.sc-a+style[data-styled]+style[data-styled]+.sc-a+.sc-a,.sc-a+.sc-a+style[data-styled]+.sc-a,.sc-a+.sc-a+style[data-styled]+style[data-styled]+.sc-a {color: purple;}"`
-      );
-    });
-
-    it('should expand + inside a media query', () => {
-      const Item = styled.div`
-        @media (min-width: 768px) {
-          & + & {
-            gap: 16px;
-          }
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `"@media (min-width: 768px) {.sc-a+.sc-a,.sc-a+style[data-styled]+.sc-a,.sc-a+style[data-styled]+style[data-styled]+.sc-a {gap: 16px;}}"`
-      );
-    });
-
-    it('should not corrupt + inside quoted attribute selectors', () => {
-      const Item = styled.div`
-        &[data-icon='+'] + & {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".sc-a[data-icon='+']+.sc-a,.sc-a[data-icon='+']+style[data-styled]+.sc-a,.sc-a[data-icon='+']+style[data-styled]+style[data-styled]+.sc-a {color: red;}"`
-      );
-    });
-
-    it('should not expand + inside :has()', () => {
-      const Item = styled.div`
-        &:has(+ .next) {
+        .item + & {
           color: red;
         }
       `;
@@ -596,236 +443,26 @@ describe('rscPlugin', () => {
         </StyleSheetManager>
       );
 
-      // + inside :has() is a relative selector, should not be expanded
-      expect(getInjectedCSS()).toMatchInlineSnapshot(`".b:has(+ .next) {color: red;}"`);
+      expect(getInjectedCSS()).toMatchInlineSnapshot(`".item+.b {color: red;}"`);
     });
 
-    it('should not expand + inside :is()', () => {
-      const Item = styled.div`
-        :is(& + &) {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-        </StyleSheetManager>
-      );
-
-      // + inside :is() should not be expanded at selector level
-      expect(getInjectedCSS()).toMatchInlineSnapshot(`":is(.b + .b) {color: red;}"`);
-    });
-
-    it('should not expand + inside :not()', () => {
-      const Item = styled.div`
-        &:not(.foo + .bar) {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(`".b:not(.foo + .bar) {color: red;}"`);
-    });
-
-    it('should handle mixed combinators: > then + then ~', () => {
-      const Item = styled.div`
-        .parent > & + & ~ & {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-          <Item>C</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".parent>.b+.b~.b,.parent>.b+style[data-styled]+.b~.b,.parent>.b+style[data-styled]+style[data-styled]+.b~.b {color: red;}"`
-      );
-    });
-
-    it('should handle + combined with :has() containing +', () => {
-      const Item = styled.div`
-        &:has(+ .next) + & {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".sc-a:has(+ .next)+.sc-a,.sc-a:has(+ .next)+style[data-styled]+.sc-a,.sc-a:has(+ .next)+style[data-styled]+style[data-styled]+.sc-a {color: red;}"`
-      );
-    });
-
-    it('stops expanding past a bounded number of sibling combinators in one selector', () => {
-      const selector = 'a+'.repeat(4000) + 'b';
-      const parts = rewriteSelectorForRSC(selector).split(',');
-
-      expect(parts).toHaveLength(1 + 2 * 16);
-      expect(parts[0]).toBe(selector);
-    });
-
-    it('should not treat CSS-escaped + as a combinator', () => {
-      // In CSS, .a\+b is a class containing a literal +. The selector .a\+b+.c
-      // has \+ (escaped, part of class name) and + (real combinator). The RSC
-      // rewrite must expand only the real combinator.
-      expect(rewriteSelectorForRSC('.a\\+b+.c')).toMatchInlineSnapshot(
-        `".a\\+b+.c,.a\\+b+style[data-styled]+.c,.a\\+b+style[data-styled]+style[data-styled]+.c"`
-      );
-    });
-
-    it('should handle + between attribute selectors', () => {
-      const Item = styled.div`
-        &[data-a] + &[data-b] {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item data-a>A</Item>
-          <Item data-b>B</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".b[data-a]+.b[data-b],.b[data-a]+style[data-styled]+.b[data-b],.b[data-a]+style[data-styled]+style[data-styled]+.b[data-b] {color: red;}"`
-      );
-    });
-
-    it('should handle + with attribute selector containing + in value', () => {
-      const Item = styled.div`
-        &[href*='a+b'] + & {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".sc-a[href*='a+b']+.sc-a,.sc-a[href*='a+b']+style[data-styled]+.sc-a,.sc-a[href*='a+b']+style[data-styled]+style[data-styled]+.sc-a {color: red;}"`
-      );
-    });
-
-    it('should handle :nth-child with + in An+B AND combinator +', () => {
-      const Item = styled.li`
-        &:nth-child(2n + 1) + &:nth-child(3n + 2) {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <ul>
-            <Item>A</Item>
-            <Item>B</Item>
-          </ul>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".b:nth-child(2n + 1 of :not(style[data-styled]))+.b:nth-child(3n + 2 of :not(style[data-styled])),.b:nth-child(2n + 1 of :not(style[data-styled]))+style[data-styled]+.b:nth-child(3n + 2 of :not(style[data-styled])),.b:nth-child(2n + 1 of :not(style[data-styled]))+style[data-styled]+style[data-styled]+.b:nth-child(3n + 2 of :not(style[data-styled])) {color: red;}"`
-      );
-    });
-
-    it('should handle deeply chained + (5 combinators)', () => {
-      const Item = styled.span`
-        & + & + & + & + & + & {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>1</Item>
-          <Item>2</Item>
-          <Item>3</Item>
-          <Item>4</Item>
-          <Item>5</Item>
-          <Item>6</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".sc-a+.sc-a+.sc-a+.sc-a+.sc-a+.sc-a,.sc-a+style[data-styled]+.sc-a+.sc-a+.sc-a+.sc-a+.sc-a,.sc-a+style[data-styled]+style[data-styled]+.sc-a+.sc-a+.sc-a+.sc-a+.sc-a,.sc-a+.sc-a+style[data-styled]+.sc-a+.sc-a+.sc-a+.sc-a,.sc-a+.sc-a+style[data-styled]+style[data-styled]+.sc-a+.sc-a+.sc-a+.sc-a,.sc-a+.sc-a+.sc-a+style[data-styled]+.sc-a+.sc-a+.sc-a,.sc-a+.sc-a+.sc-a+style[data-styled]+style[data-styled]+.sc-a+.sc-a+.sc-a,.sc-a+.sc-a+.sc-a+.sc-a+style[data-styled]+.sc-a+.sc-a,.sc-a+.sc-a+.sc-a+.sc-a+style[data-styled]+style[data-styled]+.sc-a+.sc-a,.sc-a+.sc-a+.sc-a+.sc-a+.sc-a+style[data-styled]+.sc-a,.sc-a+.sc-a+.sc-a+.sc-a+.sc-a+style[data-styled]+style[data-styled]+.sc-a {color: red;}"`
-      );
-    });
-
-    it('should handle + with ID selectors', () => {
-      const Item = styled.div`
-        &#first + &#second {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item id="first">A</Item>
-          <Item id="second">B</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".b#first+.b#second,.b#first+style[data-styled]+.b#second,.b#first+style[data-styled]+style[data-styled]+.b#second {color: red;}"`
-      );
-    });
-
-    it('should handle + with universal selector', () => {
-      const Item = styled.div`
-        * + & {
-          margin-top: 8px;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `"*+.b,*+style[data-styled]+.b,*+style[data-styled]+style[data-styled]+.b {margin-top: 8px;}"`
-      );
-    });
-
-    it('should handle deeply nested pseudo-functions with +', () => {
-      const Item = styled.div`
-        &:is(:has(+ .a), .x) + & {
-          color: red;
-        }
-      `;
-
-      render(
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <Item>A</Item>
-          <Item>B</Item>
-        </StyleSheetManager>
-      );
-
-      expect(getInjectedCSS()).toMatchInlineSnapshot(
-        `".sc-a:is(:has(+ .a), .x)+.sc-a,.sc-a:is(:has(+ .a), .x)+style[data-styled]+.sc-a,.sc-a:is(:has(+ .a), .x)+style[data-styled]+style[data-styled]+.sc-a {color: red;}"`
-      );
+    it.each<[string, string, string]>([
+      ['a chain', '.a+.b+.c', '.a+.b+.c'],
+      ['a long chain', 'a+'.repeat(4000) + 'b', 'a+'.repeat(4000) + 'b'],
+      ['an escaped plus', '.a\\+b+.c', '.a\\+b+.c'],
+      ['a plus in an attribute value', "[href*='a+b']+.c", "[href*='a+b']+.c"],
+      [
+        'a plus in An+B and as a combinator',
+        ':nth-child(2n+1)+:nth-child(3n+2)',
+        ':nth-child(2n+1 of :not(style[data-styled]))+:nth-child(3n+2 of :not(style[data-styled]))',
+      ],
+      [
+        'a list',
+        ':first-child+.a,.b+:last-child',
+        ':nth-child(1 of :not(style[data-styled]))+.a,.b+:nth-last-child(1 of :not(style[data-styled]))',
+      ],
+    ])('rewriteSelectorForRSC keeps %s as one selector', (_label, selector, expected) => {
+      expect(rewriteSelectorForRSC(selector)).toBe(expected);
     });
   });
 });

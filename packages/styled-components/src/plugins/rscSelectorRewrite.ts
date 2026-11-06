@@ -1,17 +1,13 @@
 import { SC_ATTR } from '../constants';
 import { splitTopLevelCommas } from '../parser/parser';
-import * as $ from '../utils/charCodes';
-import { isEscaped } from '../utils/normalize';
 
-// RSC selector rewrites: child-index pseudos use Selectors L4 `of S` syntax,
-// `+` combinators expand with style-tag-tolerant alternates. Both adapt for
-// inline `<style data-styled>` tags appearing as real DOM children.
+// RSC selector rewrite: child-index pseudos use Selectors L4 `of S` syntax so
+// inline `<style data-styled>` tags appearing as real DOM children are not counted.
 
 const CHILD_RE =
   /:(?:(first)-child|(last)-child|(only)-child|(nth-child)\(([^()]+)\)|(nth-last-child)\(([^()]+)\))/g;
 
 const EXCLUDE = `:not(style[${SC_ATTR}])`;
-const STYLE_TAG = `style[${SC_ATTR}]`;
 
 function rewriteChildPseudos(selector: string): string {
   if (selector.indexOf('-child') === -1) return selector;
@@ -31,42 +27,15 @@ function rewriteChildPseudos(selector: string): string {
   );
 }
 
-/** Each `+` copies the whole selector twice, so this keeps the output linear in its length. */
-const MAX_SIBLING_EXPANSIONS = 16;
-
-function expandAdjacentSibling(selector: string, out: string[]): void {
-  if (selector.indexOf('+') === -1) return;
-  let parenDepth = 0;
-  let bracketDepth = 0;
-  let expansions = 0;
-  for (let i = 0; i < selector.length && expansions < MAX_SIBLING_EXPANSIONS; i++) {
-    const ch = selector.charCodeAt(i);
-    if (ch === $.OPEN_PAREN) parenDepth++;
-    else if (ch === $.CLOSE_PAREN) parenDepth--;
-    else if (ch === $.OPEN_BRACKET) bracketDepth++;
-    else if (ch === $.CLOSE_BRACKET) bracketDepth--;
-    else if (ch === $.PLUS && parenDepth === 0 && bracketDepth === 0 && !isEscaped(selector, i)) {
-      const before = selector.substring(0, i);
-      const after = selector.substring(i + 1);
-      out.push(before + '+' + STYLE_TAG + '+' + after);
-      out.push(before + '+' + STYLE_TAG + '+' + STYLE_TAG + '+' + after);
-      expansions++;
-    }
-  }
-}
-
 /**
- * Apply child-pseudo rewrite and sibling-combinator expansion to every
- * comma-separated part of a resolved selector. Returns a single comma-joined
- * string suitable for CSS output.
+ * Apply the child-pseudo rewrite to every comma-separated part of a resolved
+ * selector. Returns a single comma-joined string suitable for CSS output.
  */
 export function rewriteSelectorForRSC(selector: string): string {
+  if (selector.indexOf('-child') === -1) return selector;
+
   const parts = splitTopLevelCommas(selector);
-  const out: string[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const rewritten = rewriteChildPseudos(parts[i]);
-    out.push(rewritten);
-    expandAdjacentSibling(rewritten, out);
-  }
-  return out.join(',');
+  for (let i = 0; i < parts.length; i++) parts[i] = rewriteChildPseudos(parts[i]);
+
+  return parts.join(',');
 }

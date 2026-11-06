@@ -8,6 +8,8 @@ import {
   StaticNode,
   StaticRoot,
 } from './ast';
+import { IS_RSC } from '../utils/isRsc';
+import { isEscaped } from '../utils/normalize';
 import { warnOnce } from '../utils/warnOnce';
 import {
   NEEDS_FIELD_SCAN,
@@ -75,6 +77,77 @@ function stripCombinatorSpaces(sel: string): string {
   }
 
   return out + sel.substring(segStart);
+}
+
+function isSpace(code: number): boolean {
+  return $.isWS(code) || code === $.FF;
+}
+
+/** What a server component's inline style tag matches; `:where` adds no specificity. */
+const STYLE_TAG = ':where(style[' + SC_ATTR + '])';
+
+/**
+ * Wraps the compound before each top-level `+` of one selector so up to two style tags may sit
+ * between it and its neighbor: `.a+.b` becomes `:is(.a,.a+TAG,.a+TAG+TAG)+.b`. The text it
+ * writes opens and closes its own parens. A selector the scan finds left open comes back as it
+ * was, for `wholeRule` to drop.
+ */
+function bridgeStyleTags(sel: string): string {
+  const len = sel.length;
+  let out = '';
+  let copied = 0;
+  let from = 0;
+  // The compound last read, kept across whitespace so `.a + .b` bridges `.a`, dropped at any other combinator.
+  let runStart = -1;
+  let runEnd = 0;
+
+  while (from < len) {
+    const stop = scanQPB(sel, from, len, $.GT, $.PLUS, $.TILDE, $.SPACE);
+    if (stop > len) return sel;
+    if (stop === len) break;
+
+    let start = from;
+    let end = stop;
+    while (start < end && isSpace(sel.charCodeAt(start))) start++;
+    while (end > start && isSpace(sel.charCodeAt(end - 1)) && !isEscaped(sel, end - 1)) end--;
+    if (end > start) {
+      runStart = start;
+      runEnd = end;
+    }
+
+    const ch = sel.charCodeAt(stop);
+    if (ch === $.PLUS && runStart !== -1) {
+      const compound = sel.substring(runStart, runEnd);
+      const gap = compound + '+' + STYLE_TAG;
+      out +=
+        sel.substring(copied, runStart) +
+        ':is(' +
+        compound +
+        ',' +
+        gap +
+        ',' +
+        gap +
+        '+' +
+        STYLE_TAG +
+        ')';
+      copied = runEnd;
+    }
+    if (ch !== $.SPACE) runStart = -1;
+
+    from = stop + 1;
+  }
+
+  return copied === 0 ? sel : out + sel.substring(copied);
+}
+
+/** `bridgeStyleTags` over each part of a selector list. */
+function bridgeStyleTagsInList(head: string): string {
+  if (head.indexOf(',') === -1) return bridgeStyleTags(head);
+
+  const parts = splitTopLevelCommas(head);
+  for (let i = 0; i < parts.length; i++) parts[i] = bridgeStyleTags(parts[i]);
+
+  return parts.join(',');
 }
 
 function formatDecl(
@@ -288,8 +361,10 @@ function emitNodes(
     const heads = Array.isArray(rewritten) ? rewritten : [rewritten];
     let written = 0;
     for (let i = 0; i < heads.length; i++) {
-      written += heads[i].length;
-      const rule = wholeRule(heads[i], block);
+      const head =
+        IS_RSC && heads[i].indexOf('+') !== -1 ? bridgeStyleTagsInList(heads[i]) : heads[i];
+      written += head.length;
+      const rule = wholeRule(head, block);
       if (rule) result.push(rule);
     }
     // `currentSelector` is already counted; what a namespace or plugin added is not.
