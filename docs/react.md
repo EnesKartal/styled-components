@@ -100,10 +100,11 @@ Two fixes, in order of preference:
 
 Browser-support cliff for fix 2: `:nth-child(... of S)` needs Chrome 111+, Firefox 113+, Safari 9+ (caniuse `css-nth-child-of-s`). An unsupported browser reads the whole rule as an invalid selector and drops it, so the styles vanish silently rather than degrade. Opt into the plugin only when the audience clears those versions; otherwise rewrite to `:nth-of-type()` by hand.
 
-The adjacent-sibling combinator needs no plugin. Server component output rewrites every top-level `+` so up to two of the library's style tags between the two elements do not break the match: the left side `B` becomes `:is(B, B + :where(style[data-styled]), B + :where(style[data-styled]) + :where(style[data-styled]))`.
+The adjacent-sibling combinator needs no plugin. Server component output rewrites every top-level `+` so up to two of the library's style tags between the two elements do not break the match: the compound `B` just before the `+` becomes `:is(B, B + :where(style[data-styled]), B + :where(style[data-styled]) + :where(style[data-styled]))` (`.x > .a + .b` gives `.x > :is(.a, …) + .b`).
+- Only the compound is wrapped: a style tag shares its sibling's parent, so the combinators before `B` still hold, and each compound is copied three times at most, so output grows linearly with the selector.
 - Specificity is unchanged: `:is()` takes its most specific argument's, and `:where()` adds none. Class names are unchanged: the rewrite is not part of the compiler's hash input.
 - Applied only under `IS_RSC`, before `wholeRule` reads the emitted head again, so the browser bundle carries none of it and the security re-read covers the inserted parens and brackets.
-- `+` inside `:is()`, `:not()`, `:has()` and other parens is not rewritten. Output grows by one copy of `B` per alternative per top-level `+`; the number of rewritten `+` per selector is capped so a chain cannot grow the output past linear in its length.
+- `+` inside `:is()`, `:not()`, `:has()` and other parens is not rewritten.
 - Limit: a sibling rendered through more than one wrapper level (three or more tags in a row) is not matched.
 - `rscPlugin` keeps only its child-index rewrite, so the two never stack.
 
