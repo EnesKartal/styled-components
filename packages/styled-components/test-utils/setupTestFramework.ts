@@ -1,6 +1,5 @@
 import failOnConsole from 'jest-fail-on-console';
 
-import { resetSeenPlugins } from '../src/utils/compiler';
 import { resetWarnOnce } from '../src/utils/warnOnce';
 
 /**
@@ -65,11 +64,15 @@ failOnConsole({
   },
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   // The shared `warnOnce` dedupe Set persists across tests; reset so each
   // assertion that expects a warning to fire actually sees it. The plugin
   // name registry persists for the same reason (a class-name collision
   // survives for the life of the page), so suites start each test clear.
+  // The compiler loads in the hook, after the test file: a static import here
+  // would load the parser before the file's `jest.mock` calls (of `isRsc`, say),
+  // and the parser would keep the real modules.
+  const { resetSeenPlugins } = await import('../src/utils/compiler');
   resetWarnOnce();
   resetSeenPlugins();
 });
