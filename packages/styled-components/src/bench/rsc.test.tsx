@@ -24,9 +24,6 @@ jest.mock('react', () => {
 
 jest.mock('../utils/isRsc', () => ({ IS_RSC: true }));
 
-// The shim re-exports from the package entry, which is still loading when the shim first reads it.
-jest.mock('styled-components/server-styles', () => jest.requireActual('../models/ScStyle'));
-
 import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import styled, {

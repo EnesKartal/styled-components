@@ -5,9 +5,11 @@ module.exports = {
     legacyFakeTimers: true,
   },
   // The package's own subpaths resolve to source; the dist tests clear this (jest.config.build.js).
+  // The server-styles subpath maps to its module rather than the shim, which re-exports from the
+  // package index: loading the whole library there would run before a suite's own mocks register.
   moduleNameMapper: {
     '^styled-components$': '<rootDir>/src/index.ts',
-    '^styled-components/server-styles$': '<rootDir>/src/server-styles.ts',
+    '^styled-components/server-styles$': '<rootDir>/src/models/ScStyle.ts',
   },
   restoreMocks: true,
   rootDir: '.',

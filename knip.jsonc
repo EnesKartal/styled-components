@@ -50,8 +50,6 @@
     },
     "packages/styled-components": {
       "entry": [
-        // Entry of the `styled-components/server-styles` subpath (rollup.config.mjs).
-        "src/server-styles.ts",
         // Entries of the type-surface project (tsconfig.test-types.json).
         "src/test/types.tsx",
         "src/test/types.native.tsx",
