@@ -168,21 +168,21 @@ const test8Checks: TestCheck[] = [
     type: 'style',
     prop: 'color',
     expected: 'rgb(220, 38, 38)',
-    label: ':first-child item is red (plugin fix)',
+    label: ':first-child item is red',
   },
   {
     ref: 'nthchild-last',
     type: 'style',
     prop: 'color',
     expected: 'rgb(37, 99, 235)',
-    label: ':last-child item is blue (plugin fix)',
+    label: ':last-child item is blue',
   },
   {
     ref: 'nthchild-second',
     type: 'style',
     prop: 'color',
     expected: 'rgb(22, 163, 74)',
-    label: ':nth-child(2) item is green (plugin fix)',
+    label: ':nth-child(2) item is green',
   },
 ];
 
@@ -515,23 +515,20 @@ export default function RSCTestPage() {
           8. Child-index selectors in RSC <TestStatus checks={test8Checks} />
         </SectionTitle>
         <SectionDesc>
-          RSC emits inline <Code>&lt;style&gt;</Code> tags as siblings of the styled element. These
-          tags are real DOM children, so <Code>:first-child</Code>, <Code>:last-child</Code>, and{' '}
-          <Code>:nth-child()</Code> would normally count them and produce wrong results. This page
-          sets <Code>rscPlugin</Code> for every server component with{' '}
-          <Code>configureServerStyles()</Code> in the root layout to rewrite these selectors
-          automatically. Both columns should match.
+          Server components render no <Code>&lt;style&gt;</Code> tags next to the styled element, so{' '}
+          <Code>:first-child</Code>, <Code>:last-child</Code>, and <Code>:nth-child()</Code> count
+          only the list items. Both columns should match.
         </SectionDesc>
         <HintText>
           If broken: the <Code>:nth-child</Code> column colors don&apos;t match the{' '}
-          <Code>:nth-of-type</Code> column. Inspect the DOM to see the{' '}
+          <Code>:nth-of-type</Code> column. Inspect the DOM for a{' '}
           <Code>&lt;style data-styled&gt;</Code> tag before the list items.
         </HintText>
         <Demo>
           <Row>
             <Column>
               <ColumnLabel>
-                <Code>:nth-child</Code> (fixed by plugin):
+                <Code>:nth-child</Code>:
               </ColumnLabel>
               <NthDemoList>
                 <NthChildItem data-testid="nthchild-first">First (should be red)</NthChildItem>

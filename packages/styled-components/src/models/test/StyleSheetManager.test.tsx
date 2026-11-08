@@ -2,10 +2,12 @@ import '@testing-library/jest-dom';
 import { act, render } from '@testing-library/react';
 import React from 'react';
 import Frame, { FrameContextConsumer } from 'react-frame-component';
-import rscPlugin from '../../plugins/rsc';
+import rtlPlugin from '../../plugins/rtl';
+import { renderToString } from 'react-dom/server';
 import StyleSheet from '../../sheet';
-import { getCSS, resetStyled } from '../../test/utils';
+import { getCSS, getRenderedCSS, resetStyled } from '../../test/utils';
 import { resetWarnOnce } from '../../utils/warnOnce';
+import ServerStyleSheet from '../ServerStyleSheet';
 import { StyleSheetManager, configureServerStyles } from '../StyleSheetManager';
 
 let styled: ReturnType<typeof resetStyled>;
@@ -25,8 +27,8 @@ describe('StyleSheetManager', () => {
     resetWarnOnce();
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-    configureServerStyles({ plugins: [rscPlugin] });
-    configureServerStyles({ plugins: [rscPlugin] });
+    configureServerStyles({ plugins: [rtlPlugin] });
+    configureServerStyles({ plugins: [rtlPlugin] });
 
     expect(warn.mock.calls).toEqual([
       [
@@ -35,13 +37,11 @@ describe('StyleSheetManager', () => {
     ]);
 
     const Item = styled.li`
-      &:first-child {
-        color: red;
-      }
+      margin-left: 4px;
     `;
     render(<Item />);
 
-    expect(getCSS(document)).not.toContain(':not(style');
+    expect(getRenderedCSS()).toBe('.b {\n  margin-left: 4px;\n}');
   });
 
   it('should render its child', () => {
@@ -330,7 +330,7 @@ describe('StyleSheetManager', () => {
     `;
 
     render(
-      <StyleSheetManager plugins={[rscPlugin]}>
+      <StyleSheetManager plugins={[rtlPlugin]}>
         <Test>Foo</Test>
       </StyleSheetManager>
     );
@@ -349,7 +349,7 @@ describe('StyleSheetManager', () => {
     `;
 
     const wrapper = render(
-      <StyleSheetManager plugins={[rscPlugin]}>
+      <StyleSheetManager plugins={[rtlPlugin]}>
         <Test>Foo</Test>
       </StyleSheetManager>
     );
@@ -399,7 +399,7 @@ describe('StyleSheetManager', () => {
 
     act(() => {
       wrapper.rerender(
-        <StyleSheetManager plugins={[rscPlugin]}>
+        <StyleSheetManager plugins={[rtlPlugin]}>
           <Test>Foo</Test>
         </StyleSheetManager>
       );
@@ -649,7 +649,7 @@ describe('StyleSheetManager', () => {
     const wrapper = render(
       <div>
         <Test>Bar</Test>
-        <StyleSheetManager plugins={[rscPlugin]}>
+        <StyleSheetManager plugins={[rtlPlugin]}>
           <Test>Foo</Test>
         </StyleSheetManager>
       </div>
@@ -861,5 +861,78 @@ describe('StyleSheetManager', () => {
 
     expect(headStyle!.getAttribute('nonce')).toBe('outer-nonce');
     expect(bodyStyle!.getAttribute('nonce')).toBe('inner-nonce');
+  });
+
+  describe('under a ServerStyleSheet', () => {
+    // One response has one nonce, and a target names a DOM node only the browser has, so a
+    // nested manager's server styles flush through the registry's tag.
+    test.each<[string, Partial<React.ComponentProps<typeof StyleSheetManager>>]>([
+      ['a nonce', { nonce: 'nested-nonce' }],
+      ['a target', { target: document.body }],
+      ['a nonce and a target', { nonce: 'nested-nonce', target: document.body }],
+    ])('keeps rules of a nested manager with %s in the registry tag', (_label, managerProps) => {
+      const Outer = styled.div`
+        color: blue;
+      `;
+      const Inner = styled.div`
+        color: green;
+      `;
+
+      const registry = new ServerStyleSheet({ nonce: 'registry-nonce' });
+      renderToString(
+        registry.collectStyles(
+          <>
+            <Outer />
+            <StyleSheetManager {...managerProps}>
+              <Inner />
+            </StyleSheetManager>
+          </>
+        )
+      );
+
+      expect(registry.getStyleTags()).toBe(
+        '<style nonce="registry-nonce" data-styled="true" data-styled-version="JEST_MOCK_VERSION">' +
+          '.c {color: blue;}/*!sc*/\n' +
+          'data-styled.g1[id="sc-a"]{content:"c,"}/*!sc*/\n' +
+          '.d {color: green;}/*!sc*/\n' +
+          'data-styled.g2[id="sc-b"]{content:"d,"}/*!sc*/\n' +
+          '</style>'
+      );
+    });
+
+    it('replaces the registry sheet when the manager takes a sheet', () => {
+      const Outer = styled.div`
+        color: blue;
+      `;
+      const Inner = styled.div`
+        color: green;
+      `;
+
+      const registry = new ServerStyleSheet();
+      const own = new ServerStyleSheet();
+      renderToString(
+        registry.collectStyles(
+          <>
+            <Outer />
+            <StyleSheetManager sheet={own.instance}>
+              <Inner />
+            </StyleSheetManager>
+          </>
+        )
+      );
+
+      expect(registry.getStyleTags()).toBe(
+        '<style data-styled="true" data-styled-version="JEST_MOCK_VERSION">' +
+          '.c {color: blue;}/*!sc*/\n' +
+          'data-styled.g1[id="sc-a"]{content:"c,"}/*!sc*/\n' +
+          '</style>'
+      );
+      expect(own.getStyleTags()).toBe(
+        '<style data-styled="true" data-styled-version="JEST_MOCK_VERSION">' +
+          '.d {color: green;}/*!sc*/\n' +
+          'data-styled.g2[id="sc-b"]{content:"d,"}/*!sc*/\n' +
+          '</style>'
+      );
+    });
   });
 });
