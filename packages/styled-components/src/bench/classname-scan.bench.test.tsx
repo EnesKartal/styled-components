@@ -9,6 +9,9 @@
  * - 5 and 30 tokens, cache-friendly: every item receives one fixed string.
  * - 5 and 30 tokens, worst case: every item receives a string unique to the item and the update, so
  *   a cache of past strings never hits.
+ * - 30 tokens, first letters shared with ids: the same two shapes, with registered ids that start
+ *   with every letter (as a build plugin's `<displayName>-<hash>` ids do) and tokens that start
+ *   with every letter, so a check on a token's first character rules out nothing.
  *
  * The figures to compare across trees are the minimum and the median of the runs, in ms per 1,000
  * items (each update renders 1,000 items); ns per render is that figure times 1,000. The minimum is
@@ -30,12 +33,44 @@ const Item = styled.div`
   color: red;
 `;
 
+const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
+
+/**
+ * Registers ids that start with every letter, spelled the way a build plugin writes them
+ * (`<displayName>-<hash>`), so a token starting with any letter can be a registered id. It runs
+ * just before the rows that need it, so the rows above see only the ids of `Item`.
+ */
+const registerLetterIds = () => {
+  let seed = 1;
+  const next = (limit: number) => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+
+    return seed % limit;
+  };
+  const word = (length: number) =>
+    Array.from({ length }, () => LETTERS[next(LETTERS.length)]).join('');
+
+  // About three hundred components with unrelated names, a mid-sized app's worth.
+  for (let index = 0; index < 300; index++) {
+    const componentId = `${LETTERS[index % LETTERS.length]}${word(2 + next(10))}-${word(6)}`;
+    styled.span.withConfig({ componentId })`
+      color: blue;
+    `;
+  }
+};
+
 const tokens = (count: number, prefix: string) =>
   Array.from({ length: count }, (_, index) => `${prefix}${index}`).join(' ');
+
+/** Utility-style tokens whose first characters cycle through every letter. */
+const letterTokens = (count: number, seed: string) =>
+  Array.from({ length: count }, (_, index) => `${LETTERS[index % 26]}${seed}-${index}`).join(' ');
 
 type Row = {
   name: string;
   classNameFor: ((update: number, item: number) => string) | undefined;
+  /** Runs once before the row; the ids it registers stay for the rows after it. */
+  setup?: () => void;
 };
 
 const rows: Row[] = [
@@ -52,13 +87,31 @@ const rows: Row[] = [
       },
     ];
   }),
+  ...(() => {
+    const fixed = letterTokens(30, 'util');
+    const tail = letterTokens(29, 'tail');
+
+    return [
+      {
+        name: '30 tokens, first letters shared with ids, cache-friendly',
+        classNameFor: () => fixed,
+        setup: registerLetterIds,
+      },
+      {
+        name: '30 tokens, first letters shared with ids, worst case',
+        classNameFor: (update: number, item: number) => `u${update}x${item} ${tail}`,
+      },
+    ];
+  })(),
 ];
 
 describe('className scan', () => {
   it('renders 1,000 items per update', () => {
     console.log(`\nclassName scan, ${ITEMS} items per update, ${RUNS} runs`);
 
-    for (const { name, classNameFor } of rows) {
+    for (const { name, classNameFor, setup } of rows) {
+      setup?.();
+
       const host = document.createElement('div');
       document.body.appendChild(host);
       const root = createRoot(host);

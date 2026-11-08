@@ -72,12 +72,10 @@ export async function temporaryReference(): Promise<unknown> {
   return typeof decoded === 'object' && decoded !== null ? Reflect.get(decoded, 'value') : decoded;
 }
 
-/** What a probe element carried: the rule text of the style tag rendered right before it. */
+/** What a probe element carried. */
 export type Probe = {
   /** The probe element's whole `className`. */
   className: string;
-  /** Text of the style tag rendered right before the probe element, or null when there is none. */
-  css: string | null;
   /** Props of the probe element as serialized (what reached the host element). */
   props: Record<string, unknown>;
   /** Id of the payload row the probe element was serialized in ("0" is the root row). */
@@ -89,8 +87,6 @@ export type FlightResult = {
   clientProps: Record<string, unknown>[];
   /** Every error Flight reported while rendering. */
   errors: string[];
-  /** Rule text of every global style tag, in payload order. */
-  globals: string[];
   /** The raw payload text. */
   payload: string;
   /** Probe elements by their `data-probe` value. */
@@ -149,11 +145,8 @@ function isElementModel(value: unknown): value is ElementModel {
 }
 
 /** Follows every reference in the payload from the root row, collecting probes and client elements. */
-function collect(
-  rows: Map<string, unknown>
-): Pick<FlightResult, 'clientProps' | 'globals' | 'probes'> {
+function collect(rows: Map<string, unknown>): Pick<FlightResult, 'clientProps' | 'probes'> {
   const clientProps: Record<string, unknown>[] = [];
-  const globals: string[] = [];
   const probes: Record<string, Probe> = {};
   const seenRows = new Set<string>();
   const seenObjects = new WeakSet<object>();
@@ -174,8 +167,14 @@ function collect(
   const visit = (value: unknown, row: string): void => {
     if (typeof value === 'string') {
       const found = deref(value);
-      if (!found || (!value.includes(':') && seenRows.has(found.row))) return;
-      seenRows.add(found.row);
+      if (!found) return;
+
+      // Only a reference to a whole row marks it seen; a path into a row visits just that part.
+      if (!value.includes(':')) {
+        if (seenRows.has(found.row)) return;
+        seenRows.add(found.row);
+      }
+
       visit(found.target, found.row);
       return;
     }
@@ -184,26 +183,10 @@ function collect(
     seenObjects.add(value);
 
     if (Array.isArray(value)) {
-      value.forEach((item, index) => {
+      value.forEach(item => {
         const label = isElementModel(item) ? item[3]['data-probe'] : undefined;
         if (typeof label === 'string') {
-          const previous = value[index - 1];
-          const before = typeof previous === 'string' ? deref(previous)?.target : previous;
-          const style = isElementModel(before) && before[1] === 'style' ? before[3].children : null;
-          probes[label] = {
-            className: String(item[3].className),
-            css: typeof style === 'string' ? style : null,
-            props: item[3],
-            row,
-          };
-        }
-        if (
-          isElementModel(item) &&
-          item[1] === 'style' &&
-          item[3]['data-styled-global'] !== undefined &&
-          typeof item[3].children === 'string'
-        ) {
-          globals.push(item[3].children);
+          probes[label] = { className: String(item[3].className), props: item[3], row };
         }
         visit(item, row);
       });
@@ -218,10 +201,10 @@ function collect(
 
   visit(rows.get('0'), '0');
 
-  return { clientProps, globals, probes };
+  return { clientProps, probes };
 }
 
-/** Reads a whole payload: its probes, client elements and global style tags. */
+/** Reads a whole payload: its probes and client elements. */
 export function readFlightPayload(payload: Buffer, errors: string[]): FlightResult {
   return { errors, payload: payload.toString('utf8'), ...collect(parseRows(payload)) };
 }

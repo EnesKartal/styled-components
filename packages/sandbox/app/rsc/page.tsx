@@ -16,14 +16,13 @@ import {
 } from '../components/test-ui';
 import theme from '../lib/theme';
 
-// Declared early so test9Checks can reference its runtime styledComponentId.
 const REPEATED_GLOBAL_INSTANCES = 3;
+const REPEATED_GLOBAL_RULE_NEEDLE = 'per-instance-marker';
 const RepeatedGlobalStyle = createGlobalStyle`
-  [data-testid="per-instance-marker"] {
+  [data-testid="${REPEATED_GLOBAL_RULE_NEEDLE}"] {
     border-style: dashed !important;
   }
 `;
-const repeatedId = RepeatedGlobalStyle.styledComponentId;
 
 const test1Checks: TestCheck[] = [
   {
@@ -195,10 +194,10 @@ const test9Checks: TestCheck[] = [
     label: 'Marker has dashed border from a repeated global style',
   },
   {
-    ref: 'style[data-styled-global="' + repeatedId + '"]',
-    type: 'count',
+    ref: REPEATED_GLOBAL_RULE_NEEDLE,
+    type: 'rule-count',
     expected: String(REPEATED_GLOBAL_INSTANCES),
-    label: 'One <style data-styled-global> tag per instance',
+    label: 'The registry sheet holds one copy of the rule per instance',
   },
 ];
 
@@ -553,39 +552,44 @@ export default function RSCTestPage() {
       {/* 9. GlobalStyle per-instance emission in RSC */}
       <Section>
         <SectionTitle>
-          9. GlobalStyle per-instance emission in RSC <TestStatus checks={test9Checks} />
+          9. GlobalStyle repeated instances in RSC <TestStatus checks={test9Checks} />
         </SectionTitle>
         <SectionDesc>
-          Three <Code>&lt;RepeatedGlobalStyle /&gt;</Code> instances render below, and each puts its
-          own <Code>&lt;style data-styled-global&gt;</Code> tag in the page. The same global style
-          often renders twice at once: in a loading fallback and again in the content that replaces
-          it, or in a layout and the page below it. React throws away the fallback, or the old page
-          on a navigation, together with its tag, so a single shared tag could vanish and take the
-          page&apos;s global styles with it. The badge below shows the live count.
+          {REPEATED_GLOBAL_INSTANCES} <Code>&lt;RepeatedGlobalStyle /&gt;</Code> instances render
+          below, and each writes its own copy of the rule into the style registry&apos;s sheet. The
+          same global style often renders twice at once: in a loading fallback and again in the
+          content that replaces it, or in a layout and the page below it. React throws away the
+          fallback, or the old page on a navigation, together with its instance, and that removes
+          only the instance&apos;s own copy, so the page&apos;s global styles stay applied. The
+          badge below shows the live rule count.
         </SectionDesc>
         <HintText>
-          Visual: green badge = {REPEATED_GLOBAL_INSTANCES} of {REPEATED_GLOBAL_INSTANCES} (one tag
-          per instance). Red badge = a tag went missing. The dashed border on the marker confirms
+          Visual: green badge = {REPEATED_GLOBAL_INSTANCES} of {REPEATED_GLOBAL_INSTANCES} (one rule
+          per instance). Red badge = a copy went missing. The dashed border on the marker confirms
           the global style applied at all. See <Code>app/suspense-5808</Code> for the loading
           fallback case.
         </HintText>
-        <RepeatedGlobalStyle />
-        <RepeatedGlobalStyle />
-        <RepeatedGlobalStyle />
+        {Array.from({ length: REPEATED_GLOBAL_INSTANCES }, (_, index) => (
+          <RepeatedGlobalStyle key={index} />
+        ))}
         <Demo>
           <PerInstanceStack>
             <CountBadge
-              tagId={repeatedId}
+              ruleNeedle={REPEATED_GLOBAL_RULE_NEEDLE}
               expected={REPEATED_GLOBAL_INSTANCES}
               unit={
                 <>
-                  <Code>&lt;style data-styled-global&gt;</Code> tag
+                  <Code>RepeatedGlobalStyle</Code> rule
                 </>
               }
-              title={'data-styled-global="' + repeatedId + '"'}
+              title={
+                'matches against ' +
+                REPEATED_GLOBAL_RULE_NEEDLE +
+                ' inside style[data-styled] sheets'
+              }
             />
             <PerInstanceMarker data-testid="per-instance-marker">
-              Dashed border ⇒ <Code>RepeatedGlobalStyle</Code> applied. Badge above ⇒ one tag per
+              Dashed border ⇒ <Code>RepeatedGlobalStyle</Code> applied. Badge above ⇒ one rule per
               instance.
             </PerInstanceMarker>
           </PerInstanceStack>
