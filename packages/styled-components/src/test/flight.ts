@@ -240,7 +240,7 @@ export function styleProps({ clientProps }: FlightResult): StyleProps[] {
 
   return all
     .map(({ chain, keyframes, outers }) => ({
-      chain: chain.map(([id, name, rules, seq]) => [
+      chain: chain.map(([id, name, rules, seq]): StyleProps['chain'][number] => [
         id,
         name,
         Array.isArray(rules) ? rules : (sent.get(id + ' ' + name) ?? []),
