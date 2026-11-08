@@ -1,7 +1,7 @@
 import { evaluateForFastPath, FastPathFragment, hasAnyFragment } from '../parser/compile';
 import { getSource, synthesizeSourceForRuleSet } from '../parser/source';
 import StyleSheet from '../sheet';
-import type { Placement } from '../sheet/Order';
+import { type Placement, SERVER_PLACEMENT } from '../sheet/Order';
 import { Compiler, ExecutionContext, RuleSet } from '../types';
 import isStaticRules from '../utils/isStaticRules';
 import { flushKeyframes, type CompiledKeyframes } from './Keyframes';
@@ -123,7 +123,7 @@ export function writeInstance(
 
   // Keyframes sort ahead of the global rules in the sheet (group IDs were
   // claimed at construction time). They share the graph's tier, not the global's definition order.
-  flushKeyframes(styleSheet, entry.keyframes, placement?.server ? { server: true } : undefined);
+  flushKeyframes(styleSheet, entry.keyframes, placement?.server ? SERVER_PLACEMENT : undefined);
   instances.set(instance, entry);
 
   if (isStatic) {

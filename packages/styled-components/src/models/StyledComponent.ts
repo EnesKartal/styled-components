@@ -11,7 +11,7 @@ import { ScStyle } from 'styled-components/server-styles';
 import { SC_VERSION } from '../constants';
 import { IS_RSC } from '../utils/isRsc';
 import type StyleSheet from '../sheet';
-import { lookupGroup, registerLabel } from '../sheet/GroupIDAllocator';
+import { getRegisterVersion, registerLabel } from '../sheet/GroupIDAllocator';
 import { hasUnadoptedServerTags } from '../sheet/Rehydration';
 import type {
   AnyComponent,
@@ -52,12 +52,10 @@ import isFunction from '../utils/isFunction';
 import isStyledComponent from '../utils/isStyledComponent';
 import isTag from '../utils/isTag';
 import { joinStrings } from '../utils/joinStrings';
-import { getRegisterVersion } from '../sheet/GroupIDAllocator';
 import { registeredIdsIn } from '../utils/registeredIds';
 import { getRscRequestState } from '../utils/rscCache';
 import { warnOnce } from '../utils/warnOnce';
 import { rscChain, rscFlush, rscKeyframes } from './rscStyle';
-import type { ScStyleOuter } from './ScStyle';
 import WebStyle, { GeneratedStyle } from './WebStyle';
 import { type IStyleSheetContext, useStyleSheetContext } from './StyleSheetManager';
 import { DefaultTheme, ThemeContext } from './ThemeProvider';
@@ -118,8 +116,8 @@ function learnOuters(sheet: StyleSheet, outers: readonly string[], id: string): 
 }
 
 /**
- * The registered component ids in `className` that are not the component's own chain: the styled
- * components whose classes reached this element before its own, so they wrap it.
+ * The registered ids in `className` outside the component's own chain: the styled components up
+ * the tree that passed their classes down.
  */
 function outersIn(className: string, webStyle: WebStyle): readonly string[] {
   const hits = registeredIdsIn(className);
@@ -139,7 +137,10 @@ function outersIn(className: string, webStyle: WebStyle): readonly string[] {
   return outers ?? hits;
 }
 
-/** An instance's last scan: the `className` it scanned, the register version it ran against, and the outers found. */
+/**
+ * An instance's last scan: the `className` it scanned, the register version it ran against, and
+ * the outers found.
+ */
 type RememberedScan = { className: string; outers: readonly string[]; version: number };
 
 /**
@@ -624,17 +625,12 @@ function rscStyleElement(
   const keyframes = rscKeyframes(generated.keyframes);
   if (chain.length === 0 && keyframes.length === 0) return null;
 
-  const outers: ScStyleOuter[] = [];
-  for (let i = 0; i < outerIds.length; i++) {
-    const seq = lookupGroup(outerIds[i]);
-    if (seq !== undefined) outers.push([outerIds[i], seq]);
-  }
-
   const styleElement = createElement(ScStyle, {
     chain,
     key: 'sc-' + webStyle.componentId,
     keyframes,
-    outers,
+    // A fresh empty array: Flight sends a shared one as a reference longer than `[]`.
+    outers: outerIds.length > 0 ? outerIds : [],
   });
   if (state !== null) state.styleElements.set(sharedKey, styleElement);
 

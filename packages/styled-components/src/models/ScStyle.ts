@@ -1,33 +1,27 @@
 import React from 'react';
 import { IS_BROWSER } from '../constants';
 import StyleSheet from '../sheet';
-import type { Placement } from '../sheet/Order';
+import { SERVER_PLACEMENT } from '../sheet/Order';
 import { warnOnce } from '../utils/warnOnce';
 import { useStyleSheetContext } from './StyleSheetManager';
 import { removeInstance, writeInstance } from './WebGlobalStyle';
 
-declare const __SERVER__: boolean;
-
 /**
  * One level of a server styled instance's chain on the wire: component id, class name, compiled
- * rules, definition order in the server graph. The props below cross from the server bundle to the
- * browser bundle, so none of their names is on the mangle list.
+ * rules, definition order in the server graph.
  */
 export type ScStyleLevel = [id: string, name: string, rules: string[], seq: number];
 
 /** Compiled keyframes on the wire: id, name, compiled rules. */
 export type ScStyleKeyframes = [id: string, name: string, rules: string[]];
 
-/** An outer component on the wire: component id and definition order in the server graph. */
-export type ScStyleOuter = [id: string, seq: number];
-
 /** @internal */
 export type ScStyleProps = {
   /** The instance's levels with rules, base first. */
   chain: ScStyleLevel[];
   keyframes: ScStyleKeyframes[];
-  /** Components whose classes reached the instance's element before it: they wrap it. */
-  outers: ScStyleOuter[];
+  /** Ids of the components whose classes reached the instance's element before it: they wrap it. */
+  outers: readonly string[];
 };
 
 /** @internal */
@@ -41,12 +35,9 @@ export type ScGlobalStyleProps = {
 const NO_REGISTRY_MESSAGE =
   'Server component styles were not collected, so this page has no styles for them until it hydrates. Render the page inside a style registry (see the Next.js recipe at https://styled-components.com/docs/faqs), and check that only one copy of styled-components is installed.';
 
-/** Where a keyframes group sorts: the server graph's global tier. */
-const SERVER_TIER: Placement = { server: true };
-
 /** A render outside every registry (not a server sheet, and not in the browser) has nowhere to write. */
-function warnWithoutRegistry(styleSheet: StyleSheet): void {
-  if (__DEV__ && !styleSheet.server && !IS_BROWSER) warnOnce('no-registry', NO_REGISTRY_MESSAGE);
+function warnWithoutRegistry(): void {
+  if (__DEV__ && !IS_BROWSER) warnOnce('no-registry', NO_REGISTRY_MESSAGE);
 }
 
 /** Records each level's pin to the level before it, so the sheet orders them before any other edge touches them. */
@@ -61,7 +52,8 @@ function writeStyle(styleSheet: StyleSheet, props: ScStyleProps): void {
   const { chain, keyframes, outers } = props;
   for (let i = 0; i < keyframes.length; i++) {
     const [id, name, rules] = keyframes[i];
-    if (!styleSheet.hasNameForId(id, name)) styleSheet.insertRules(id, name, rules, SERVER_TIER);
+    if (!styleSheet.hasNameForId(id, name))
+      styleSheet.insertRules(id, name, rules, SERVER_PLACEMENT);
   }
 
   for (let i = 0; i < chain.length; i++) {
@@ -74,7 +66,7 @@ function writeStyle(styleSheet: StyleSheet, props: ScStyleProps): void {
   if (chain.length === 0) return;
 
   const top = chain[chain.length - 1][0];
-  for (let i = 0; i < outers.length; i++) styleSheet.learn(outers[i][0], top);
+  for (let i = 0; i < outers.length; i++) styleSheet.learn(outers[i], top);
 }
 
 /**
@@ -89,7 +81,7 @@ export function ScStyle(props: ScStyleProps): null {
   recordChain(props.chain);
 
   if (styleSheet.server) writeStyle(styleSheet, props);
-  else warnWithoutRegistry(styleSheet);
+  else warnWithoutRegistry();
 
   if (!__SERVER__) {
     // biome-ignore lint/correctness/useHookAtTopLevel: __SERVER__ is a build-time constant, so a given bundle always runs this hook or never does
@@ -109,36 +101,28 @@ export function ScStyle(props: ScStyleProps): null {
 export function ScGlobalStyle({ id, keyframes, rules, seq }: ScGlobalStyleProps): null {
   const { styleSheet } = useStyleSheetContext();
   const instance = React.useId();
-  const entry = React.useMemo(
+  const { entry, writeOptions } = React.useMemo(
     () => ({
-      keyframes: keyframes.map(([kfId, name, kfRules]) => ({ id: kfId, name, rules: kfRules })),
-      name: id + instance,
-      rules,
+      entry: {
+        keyframes: keyframes.map(([kfId, name, kfRules]) => ({ id: kfId, name, rules: kfRules })),
+        name: id + instance,
+        rules,
+      },
+      writeOptions: { isStatic: false, placement: { seq, server: true } },
     }),
-    [id, instance, keyframes, rules]
+    [id, instance, keyframes, rules, seq]
   );
 
   StyleSheet.registerId(id);
 
-  if (styleSheet.server) {
-    writeInstance(styleSheet, id, instance, entry, {
-      isStatic: false,
-      placement: { seq, server: true },
-    });
-  } else {
-    warnWithoutRegistry(styleSheet);
-  }
+  if (styleSheet.server) writeInstance(styleSheet, id, instance, entry, writeOptions);
+  else warnWithoutRegistry();
 
   if (!__SERVER__) {
     // biome-ignore-start lint/correctness/useHookAtTopLevel: __SERVER__ is a build-time constant, so a given bundle always runs both hooks or neither
     React.useInsertionEffect(() => {
-      if (!styleSheet.server) {
-        writeInstance(styleSheet, id, instance, entry, {
-          isStatic: false,
-          placement: { seq, server: true },
-        });
-      }
-    }, [entry, id, instance, seq, styleSheet]);
+      if (!styleSheet.server) writeInstance(styleSheet, id, instance, entry, writeOptions);
+    }, [entry, id, instance, styleSheet, writeOptions]);
 
     // Cleanup only: fires on unmount or a sheet swap, never on a plain re-render.
     React.useInsertionEffect(() => {

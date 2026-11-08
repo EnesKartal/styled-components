@@ -40,7 +40,7 @@ export function rscFlush(
  *
  * @internal
  */
-export type RscChainOptions = {
+type RscChainOptions = {
   context: ExecutionContext;
   generated: GeneratedStyle;
   ssc: IStyleSheetContext;

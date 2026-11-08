@@ -25,60 +25,16 @@ import {
   Filler,
   clientComponent,
   renderFlight,
+  styleProps,
   type FlightResult,
   type Probe,
 } from '../../test/flight';
 
 type PassedProps = { className?: string };
 
-type StyleProps = {
-  chain: Array<[string, string, string[], number]>;
-  keyframes: unknown[];
-  outers: Array<[string, number]>;
-};
-
 /** The classes of a probe element that are not component ids (`sc-xxxx`, or `Name-sc-xxxx` with a build plugin). */
 const generatedClasses = (probe: Probe): string[] =>
   probe.className.split(' ').filter(name => !name.includes('sc-'));
-
-const sorted = (list: StyleProps[]): StyleProps[] =>
-  [...list].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-
-/**
- * The props of every style component the payload sends, ordered so a test need not know Flight's
- * row order. A rules array Flight already sent is a reference to its row on the next level that
- * carries it; it is read back as the array.
- */
-function styleProps({ clientProps }: FlightResult): StyleProps[] {
-  type Sent = { chain: Array<[string, string, string[] | string, number]> } & Omit<
-    StyleProps,
-    'chain'
-  >;
-
-  const all = clientProps.filter(
-    (props): props is Sent & Record<string, unknown> => 'chain' in props
-  );
-  const sent = new Map<string, string[]>();
-
-  for (const { chain } of all) {
-    for (const [id, name, rules] of chain) {
-      if (Array.isArray(rules)) sent.set(id + ' ' + name, rules);
-    }
-  }
-
-  return sorted(
-    all.map(({ chain, keyframes, outers }) => ({
-      chain: chain.map(([id, name, rules, seq]) => [
-        id,
-        name,
-        Array.isArray(rules) ? rules : (sent.get(id + ' ' + name) ?? []),
-        seq,
-      ]),
-      keyframes,
-      outers,
-    }))
-  );
-}
 
 describe('styled components under Flight', () => {
   it('sends the style of a wrapper that resumes after an await, and the outer it passes its classes through to', async () => {
@@ -102,7 +58,7 @@ describe('styled components under Flight', () => {
     );
     const [, blue, , red] = result.probes.async.className.split(' ');
     const btn = [Btn.styledComponentId, blue, groupForId(Btn.styledComponentId)];
-    const outer = [Red.styledComponentId, groupForId(Red.styledComponentId)];
+    const outer = Red.styledComponentId;
 
     expect(result.errors).toEqual([]);
     expect(
@@ -114,7 +70,7 @@ describe('styled components under Flight', () => {
         .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
     ).toEqual(
       [
-        { levels: [[...outer.slice(0, 1), red, outer[1]]], outers: [] },
+        { levels: [[outer, red, groupForId(outer)]], outers: [] },
         { levels: [btn], outers: [outer] },
         { levels: [btn], outers: [] },
       ].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
@@ -140,7 +96,7 @@ describe('styled components under Flight', () => {
         <Red data-probe="deferred" />
       </main>
     );
-    const outer = [Red.styledComponentId, groupForId(Red.styledComponentId)];
+    const outer = Red.styledComponentId;
 
     expect(result.errors).toEqual([]);
     expect(
@@ -167,7 +123,7 @@ describe('styled components under Flight', () => {
     const result = await renderFlight(<Red />);
     const inner = styleProps(result).find(props => props.chain[0][0] === Btn.styledComponentId);
 
-    expect(inner?.outers).toEqual([[Red.styledComponentId, groupForId(Red.styledComponentId)]]);
+    expect(inner?.outers).toEqual([Red.styledComponentId]);
   });
 
   it('passes a wrapper of a client component its own id and generated class, and sends the rule for that class', async () => {

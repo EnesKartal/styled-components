@@ -27,6 +27,9 @@ export type GroupKind = (typeof GROUP_KIND)[keyof typeof GROUP_KIND];
  */
 export type Placement = { seq?: number | undefined; server?: boolean | undefined };
 
+/** The placement of a group with no definition order of its own in the server graph. */
+export const SERVER_PLACEMENT: Placement = { server: true };
+
 /** What `learn` did with an edge: stored it, or left it out because the pair is settled, refused or contested. */
 export type LearnResult = 'contested' | 'refused' | 'settled' | 'stored';
 

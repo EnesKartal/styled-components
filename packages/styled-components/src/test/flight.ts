@@ -209,6 +209,49 @@ export function readFlightPayload(payload: Buffer, errors: string[]): FlightResu
   return { errors, payload: payload.toString('utf8'), ...collect(parseRows(payload)) };
 }
 
+/** The props of one `ScStyle` element in a payload. */
+export type StyleProps = {
+  chain: Array<[string, string, string[], number]>;
+  keyframes: unknown[];
+  outers: string[];
+};
+
+/**
+ * The props of every style component the payload sends, ordered so a test need not know Flight's
+ * row order. A rules array Flight already sent is a reference to its row on the next level that
+ * carries it; it is read back as the array.
+ */
+export function styleProps({ clientProps }: FlightResult): StyleProps[] {
+  type Sent = { chain: Array<[string, string, string[] | string, number]> } & Omit<
+    StyleProps,
+    'chain'
+  >;
+
+  const all = clientProps.filter(
+    (props): props is Sent & Record<string, unknown> => 'chain' in props
+  );
+  const sent = new Map<string, string[]>();
+
+  for (const { chain } of all) {
+    for (const [id, name, rules] of chain) {
+      if (Array.isArray(rules)) sent.set(id + ' ' + name, rules);
+    }
+  }
+
+  return all
+    .map(({ chain, keyframes, outers }) => ({
+      chain: chain.map(([id, name, rules, seq]) => [
+        id,
+        name,
+        Array.isArray(rules) ? rules : (sent.get(id + ' ' + name) ?? []),
+        seq,
+      ]),
+      keyframes,
+      outers,
+    }))
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+}
+
 /** Renders `tree` with the real Flight server and returns the probes found in the payload. */
 export function renderFlight(tree: ReactNode): Promise<FlightResult> {
   return new Promise(resolve => {

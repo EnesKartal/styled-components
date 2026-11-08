@@ -31,6 +31,7 @@ import {
   Filler,
   clientComponent,
   renderFlight,
+  styleProps,
   temporaryReference,
   type FlightResult,
   type Probe,
@@ -82,20 +83,9 @@ const ruleFor = (probe: Probe, { namespace, tag }: Scope): string => {
   return `${namespace ? `${namespace} ` : ''}.${className}{color:red;${tag ? `--${tag}:on;` : ''}}`;
 };
 
-/** The style components' props in a payload; Flight writes a rules array it already sent as a reference, read back here as the array. */
-const styleLevels = ({ clientProps }: FlightResult): Map<string, string[]> => {
-  const levels = new Map<string, string[]>();
-
-  for (const props of clientProps) {
-    if (!('chain' in props) || !Array.isArray(props.chain)) continue;
-
-    for (const [, name, rules] of props.chain as Array<[string, string, string[] | string]>) {
-      if (Array.isArray(rules)) levels.set(name, rules);
-    }
-  }
-
-  return levels;
-};
+/** The rules of each style level in a payload, by class name. */
+const styleLevels = (result: FlightResult): Map<string, string[]> =>
+  new Map(styleProps(result).flatMap(({ chain }) => chain.map(([, name, rules]) => [name, rules])));
 
 /** The rules a probe carries: those of the style level named by its last class, or null when none was sent. */
 const cssOf = (result: FlightResult, probe: Probe): string | null => {
@@ -543,7 +533,7 @@ describe('StyleSheetManager scope by position', () => {
   });
 
   describe('iterables in a children position', () => {
-    // Two items of one component share a rule, so the second carries no style tag; the scope is read through the consumer instead.
+    // Items of one component share a name, so the sheet writes its rules once; the scope is read through the consumer instead.
     const seen: Record<string, string[] | undefined> = {};
     const Reader = ({ id }: { id: string }) => (
       <StyleSheetConsumer>

@@ -88,9 +88,7 @@ describe('ScStyle in the browser', () => {
   it('puts an outer after the component it wraps, though the outer was defined first', () => {
     mount(
       <ScStyle {...styleProps({ chain: [level('outer', 'o1', 'blue', 1)] })} />,
-      <ScStyle
-        {...styleProps({ chain: [level('inner', 'i1', 'red', 9)], outers: [['outer', 1]] })}
-      />
+      <ScStyle {...styleProps({ chain: [level('inner', 'i1', 'red', 9)], outers: ['outer'] })} />
     );
 
     expect(groups()).toEqual([
@@ -143,5 +141,16 @@ describe('ScGlobalStyle in the browser', () => {
       ['sc-global-g', []],
       ['a', ['.x {color: red;}']],
     ]);
+  });
+
+  it('keeps the rules of a second instance of one id until that instance unmounts too', () => {
+    mount(global('sc-global-g', 'body{margin:0;}'), global('sc-global-g', 'body{padding:0;}'));
+    expect(groups()).toEqual([['sc-global-g', ['body {margin: 0;}', 'body {padding: 0;}']]]);
+
+    mount(global('sc-global-g', 'body{padding:0;}'));
+    expect(groups()).toEqual([['sc-global-g', ['body {padding: 0;}']]]);
+
+    mount();
+    expect(groups()).toEqual([['sc-global-g', []]]);
   });
 });

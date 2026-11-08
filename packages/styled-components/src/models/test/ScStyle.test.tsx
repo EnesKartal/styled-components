@@ -130,9 +130,7 @@ describe('ScStyle on a server sheet', () => {
   it('puts an outer after the component it wraps, though the outer was defined first', () => {
     renderInto(
       <ScStyle {...styleProps({ chain: [level('outer', 'o1', 'blue', 1)] })} />,
-      <ScStyle
-        {...styleProps({ chain: [level('inner', 'i1', 'red', 9)], outers: [['outer', 1]] })}
-      />
+      <ScStyle {...styleProps({ chain: [level('inner', 'i1', 'red', 9)], outers: ['outer'] })} />
     );
 
     expect(sheet.toString()).toBe(
@@ -143,9 +141,7 @@ describe('ScStyle on a server sheet', () => {
 
   it('puts an outer the sheet has no rules for after the inner, so its later rules land there', () => {
     renderInto(
-      <ScStyle
-        {...styleProps({ chain: [level('inner', 'i1', 'red', 9)], outers: [['outer', 1]] })}
-      />,
+      <ScStyle {...styleProps({ chain: [level('inner', 'i1', 'red', 9)], outers: ['outer'] })} />,
       <ScStyle {...styleProps({ chain: [level('other', 'z1', 'green', 4)] })} />,
       <ScStyle {...styleProps({ chain: [level('outer', 'o1', 'blue', 1)] })} />
     );
@@ -247,11 +243,12 @@ describe('ScGlobalStyle on a server sheet', () => {
       />
     );
 
-    expect(sheet.order.positions.map(idForGroup).sort()).toEqual([
-      'a',
+    // Both sit in the server global tier, ordered by seq: the global's is 1, the keyframes' is
+    // their group number (3, the third id registered). The component's tier sorts after both.
+    expect(sheet.order.positions.map(idForGroup)).toEqual([
       'sc-global-g',
       'sc-keyframes-spin',
+      'a',
     ]);
-    expect(idForGroup(sheet.order.positions[2])).toBe('a');
   });
 });

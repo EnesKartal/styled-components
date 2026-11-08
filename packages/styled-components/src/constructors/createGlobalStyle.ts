@@ -78,7 +78,9 @@ export default function createGlobalStyle<Props extends object>(
     // they run on every render that writes. Only the sheet write waits. A
     // static global has none, so it keeps the entry it registered.
     const entry =
-      (globalStyle.isStatic && getInstance(ssc.styleSheet, styledComponentId, instance)) ||
+      (!IS_RSC &&
+        globalStyle.isStatic &&
+        getInstance(ssc.styleSheet, styledComponentId, instance)) ||
       globalStyle.computeRules(
         instance,
         (globalStyle.isStatic
