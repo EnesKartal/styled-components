@@ -100,6 +100,7 @@ This file is the repo's only agent instructions file; there is no CLAUDE.md. It 
 - `pnpm --filter styled-components size`: Builds only the bundles the size metric reads and prints their gzip bytes (flags in the `scripts/size.mjs` header). See [docs/bundling.md](docs/bundling.md)
 - `pnpm test`: Run the web, native, and type suites (not `test:build`, benches, or the `verify`-only checks)
 - `pnpm --filter sandbox dev`: Start Next.js dev server
+- `pnpm --filter styled-components typecheck`: library source only; the shared test helpers under `src/test/` type-check in `test:types`, so a change to them also runs that
 - `pnpm --filter styled-components test:web`: Run the web suite against source under jsdom
 - `pnpm --filter styled-components test:native`: Run the React Native suite against source
 - `pnpm --filter styled-components bench`: `bench:web` then `bench:rsc`
