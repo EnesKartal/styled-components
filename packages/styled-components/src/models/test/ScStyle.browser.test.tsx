@@ -40,7 +40,7 @@ const groups = () =>
 
 const within = (...elements: React.ReactElement[]) => (
   <StyleSheetManager sheet={sheet}>
-    {elements.map((element, index) => React.cloneElement(element, { key: index }))}
+    {elements.map((element, index) => React.cloneElement(element, { key: element.key ?? index }))}
   </StyleSheetManager>
 );
 
@@ -144,10 +144,31 @@ describe('ScGlobalStyle in the browser', () => {
   });
 
   it('keeps the rules of a second instance of one id until that instance unmounts too', () => {
-    mount(global('sc-global-g', 'body{margin:0;}'), global('sc-global-g', 'body{padding:0;}'));
+    // Keyed, so the second mount drops the first instance rather than handing its slot to the
+    // second instance's props, which would rewrite the surviving rules and hide a lost copy.
+    const margin = (
+      <ScGlobalStyle
+        id="sc-global-g"
+        key="margin"
+        keyframes={[]}
+        rules={['body{margin:0;}']}
+        seq={1}
+      />
+    );
+    const padding = (
+      <ScGlobalStyle
+        id="sc-global-g"
+        key="padding"
+        keyframes={[]}
+        rules={['body{padding:0;}']}
+        seq={1}
+      />
+    );
+
+    mount(margin, padding);
     expect(groups()).toEqual([['sc-global-g', ['body {margin: 0;}', 'body {padding: 0;}']]]);
 
-    mount(global('sc-global-g', 'body{padding:0;}'));
+    mount(padding);
     expect(groups()).toEqual([['sc-global-g', ['body {padding: 0;}']]]);
 
     mount();
