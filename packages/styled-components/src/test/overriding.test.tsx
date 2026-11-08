@@ -1,5 +1,8 @@
 import { render } from '@testing-library/react';
 import React from 'react';
+import { StyleSheetManager } from '../models/StyleSheetManager';
+import StyleSheet from '../sheet';
+import extractCSS from '../utils/extractCSS';
 import { getRenderedCSS, resetStyled } from './utils';
 
 // Disable isStaticRules optimization since we're not
@@ -184,6 +187,68 @@ describe('extending', () => {
             color: red;
           }"
         `);
+      });
+
+      it('moves behind an inner component that receives the outer classes on a later render', () => {
+        const Between = ({ className, wrapped }: { className?: string; wrapped: boolean }) => (
+          <Inner className={wrapped ? className : 'plain'} />
+        );
+        const Outer = styled(Between)`
+          color: red;
+        `;
+        const Inner = styled.div`
+          color: blue;
+        `;
+
+        const { rerender } = render(<Outer wrapped={false} />);
+        const before = getRenderedCSS();
+
+        rerender(<Outer wrapped />);
+
+        expect(before).toMatchInlineSnapshot(`
+          ".c {
+            color: red;
+          }
+          .d {
+            color: blue;
+          }"
+        `);
+        expect(getRenderedCSS()).toMatchInlineSnapshot(`
+          ".d {
+            color: blue;
+          }
+          .c {
+            color: red;
+          }"
+        `);
+      });
+
+      it('puts the outer after the inner in a new sheet the same instances move to', () => {
+        const Between = ({ className }: { className?: string }) => <Inner className={className} />;
+        const Outer = styled(Between)`
+          color: red;
+        `;
+        const Inner = styled.div`
+          color: blue;
+        `;
+        const first = new StyleSheet();
+        const second = new StyleSheet();
+
+        const { rerender } = render(
+          <StyleSheetManager sheet={first}>
+            <Outer />
+          </StyleSheetManager>
+        );
+        rerender(
+          <StyleSheetManager sheet={second}>
+            <Outer />
+          </StyleSheetManager>
+        );
+
+        const innerThenOuter = '.d {color: blue;}/*!sc*/\n.c {color: red;}/*!sc*/\n';
+
+        expect(extractCSS(first)).toBe(innerThenOuter);
+        expect(extractCSS(second)).toBe(innerThenOuter);
       });
 
       it('falls back to definition order for two components that wrap each other, once, and keeps it', () => {

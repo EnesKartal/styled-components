@@ -12,6 +12,8 @@
  * - 30 tokens, first letters shared with ids: the same two shapes, with registered ids that start
  *   with every letter (as a build plugin's `<displayName>-<hash>` ids do) and tokens that start
  *   with every letter, so a check on a token's first character rules out nothing.
+ * - 5 and 30 tokens, per-item stable: every item receives its own string, the same on every update
+ *   (more strings than a cache of past strings holds).
  *
  * The figures to compare across trees are the minimum and the median of the runs, in ms per 1,000
  * items (each update renders 1,000 items); ns per render is that figure times 1,000. The minimum is
@@ -103,6 +105,14 @@ const rows: Row[] = [
       },
     ];
   })(),
+  ...[5, 30].map(count => {
+    const tail = letterTokens(count - 1, 'tail');
+
+    return {
+      name: `${count} tokens, per-item string stable across updates (letters shared with ids)`,
+      classNameFor: (_update: number, item: number) => `item-${item} ${tail}`,
+    };
+  }),
 ];
 
 describe('className scan', () => {
