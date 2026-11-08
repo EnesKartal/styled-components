@@ -132,8 +132,8 @@ Server component styles reach the page only through a style registry (a `ServerS
 3. Registry flush: `<style data-styled>` tags with markers, before `</head>` and before each later chunk.
 4. Browser: rehydration and late adoption read the tags; each `ScStyle` and `ScGlobalStyle` inserts and learns in its insertion effect.
 
-- A server styled instance renders `Fragment(ScStyle, element)`, `ScStyle` first, keyed `sc-<componentId>`; the element carries the full class string. `ScStyle` props: `chain` (`[componentId, name, rules[], seq][]`, base first), `keyframes` (`[id, name, rules[]][]`), `outers` (`[componentId, seq][]`). `ScGlobalStyle` props: `id`, `keyframes`, `rules`, `seq`. Both render `null`.
-- Each level keeps its own generated name and group, as on the client; nothing is folded or retargeted.
+- A server styled instance renders `Fragment(ScStyle, element)`, `ScStyle` first, keyed `sc-<componentId>`; the element carries the full class string. `ScStyle` props: `chain` (`[componentId, name, rules[], seq][]`, base first), `keyframes` (`[id, name, rules[]][]`), `outers` (`componentId[]`). `ScGlobalStyle` props: `id`, `keyframes`, `rules`, `seq`. Both render `null`.
+- Each level keeps its own generated name and group, as on the client.
 - `ScStyle` and `ScGlobalStyle` are `@internal` exports of the package entry (`index.ts`, never `base.ts`, so the standalone build carries neither). The `styled-components/server-styles` subpath re-exports them from a `'use client'` module, so the SSR and browser graphs each reach them through one instance of the package and its `mainSheet`. The server build imports the subpath by name and keeps it external; the browser, rn-web and native builds never import it. See [bundling.md](bundling.md).
 - Wire prop names cross from the server bundle to the browser bundle, which terser mangles apart, so none is on the mangle list.
 - Every instance renders its own `ScStyle` ("Why there is no per-request ledger"). Element objects are shared per request on component id, generated names and the `outers` signature, so Flight writes repeated props once.
@@ -153,8 +153,9 @@ Each sheet owns an `Order`: the group positions (output order), each group's key
 ### Learning edges
 
 - Client scan, every styled render with a non-empty `className`: each token found in the group register that is not one of the component's own chain ids is an outer. Results are cached per `className` string in a bounded FIFO stamped with a register version that bumps on each new id.
+  - Every build but the server build: each instance also remembers its last `className`, register version and outers in a ref, so a list with more distinct strings than the FIFO holds skips the scan while its strings stay put. The memo holds only the scan result; settledness is always asked of the current sheet.
   - Server sheet: `learn` in render.
-  - Browser: a read-only `isSettled` check in render; an unsettled outer mounts `StyleInjector` with `outers`, and its insertion effect learns. `useImpl`'s hook sequence is unchanged and independent of the scan.
+  - Browser: a read-only `isSettled` check in render; an unsettled outer mounts `StyleInjector` with `outers`, and its insertion effect learns. `useImpl`'s hook sequence is the same on every render, whatever the scan finds.
 - RSC scan: the same against the RSC graph's register; hits travel as `outers`. Covers `as={X}`, plain intermediates, nested server wrappers, hand-passed `className`, and a `"use cache"` component that receives `className`.
 - `ScStyle` registers its chain ids in render, before its element renders, so a same-pass inner sees a server outer the browser never saw.
 - Only a server component can wrap a client one: a client module cannot import a server component, and server `children` never receive a client parent's `className`.
