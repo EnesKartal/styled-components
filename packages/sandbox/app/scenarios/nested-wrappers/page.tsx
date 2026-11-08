@@ -1,15 +1,16 @@
-import type { ReactNode } from 'react';
+import type { ComponentProps } from 'react';
 import styled from 'styled-components';
 import { BLUE, Scenario } from '../ui';
 
-type PlainProps = { children?: ReactNode; className?: string };
+/** Every prop passes through, so the probe's `data-expected` reaches the element. */
+type PlainProps = ComponentProps<'div'>;
 
-function PlainToB1({ children, className }: PlainProps) {
-  return <B1 className={className}>{children}</B1>;
+function PlainToB1(props: PlainProps) {
+  return <B1 {...props} />;
 }
 
-function PlainToA({ children, className }: PlainProps) {
-  return <A className={className}>{children}</A>;
+function PlainToA(props: PlainProps) {
+  return <A {...props} />;
 }
 
 // Outermost first: each wrapper is defined before what it reaches, the order definition alone gets wrong.

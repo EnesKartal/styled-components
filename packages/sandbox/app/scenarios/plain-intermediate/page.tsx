@@ -1,20 +1,21 @@
-import type { ReactNode } from 'react';
+import type { ComponentProps } from 'react';
 import styled from 'styled-components';
 import { ClientBase } from '../client-base';
 import { BLUE, Scenario } from '../ui';
 
-type PlainProps = { children?: ReactNode; className?: string };
+/** Every prop passes through, so the probe's `data-expected` reaches the element. */
+type PlainProps = ComponentProps<'div'>;
 
 const A = styled.div`
   color: red;
 `;
 
-function PlainServer({ children, className }: PlainProps) {
-  return <A className={className}>{children}</A>;
+function PlainServer(props: PlainProps) {
+  return <A {...props} />;
 }
 
-function PlainClient({ children, className }: PlainProps) {
-  return <ClientBase className={className}>{children}</ClientBase>;
+function PlainClient(props: PlainProps) {
+  return <ClientBase {...props} />;
 }
 
 // Each outer is defined after the component it reaches through a plain function.
