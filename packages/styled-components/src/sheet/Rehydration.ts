@@ -220,8 +220,13 @@ export const adoptServerTags = (sheet: Sheet) => {
 
     adoptTag(sheet, node, late);
 
-    if (isRemovable(node)) node.remove();
-    else node.setAttribute(SC_ATTR_ADOPTED, '');
+    if (isRemovable(node)) {
+      node.remove();
+    } else {
+      // The sheet holds these rules now; a live copy later in the page would outrank the sheet's later rules.
+      node.textContent = '';
+      node.setAttribute(SC_ATTR_ADOPTED, '');
+    }
   }
 
   sheet.order.rehydrated = true;

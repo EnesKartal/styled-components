@@ -934,7 +934,7 @@ describe('adoption', () => {
       expect(document.body.querySelector('style')).toBeNull();
     });
 
-    it('adopts a tag that sits before a page element but leaves it in place, marked adopted', () => {
+    it('adopts a tag that sits before a page element but leaves it in place, marked adopted and empty', () => {
       document.body.innerHTML =
         serverTag('.a {}', 'data-styled.g1[id="A"]{content:"a1,"}') + '<div id="app"></div>';
       const sheet = new StyleSheet({ isServer: true });
@@ -945,6 +945,8 @@ describe('adoption', () => {
       expect(sheet.hasNameForId('A', 'a1')).toBe(true);
       expect(left).not.toBeNull();
       expect(left?.hasAttribute('data-sc-adopted')).toBe(true);
+      // Its rules live on in the sheet; a second copy later in the page would outrank rules the sheet adds after it.
+      expect(left?.textContent).toBe('');
 
       const other = new StyleSheet({ isServer: true });
       rehydrateSheet(other);
