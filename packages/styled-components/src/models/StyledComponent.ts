@@ -52,6 +52,7 @@ import isFunction from '../utils/isFunction';
 import isStyledComponent from '../utils/isStyledComponent';
 import isTag from '../utils/isTag';
 import { joinStrings } from '../utils/joinStrings';
+import { getRegisterVersion } from '../sheet/GroupIDAllocator';
 import { registeredIdsIn } from '../utils/registeredIds';
 import { getRscRequestState } from '../utils/rscCache';
 import { warnOnce } from '../utils/warnOnce';
@@ -136,6 +137,31 @@ function outersIn(className: string, webStyle: WebStyle): readonly string[] {
   }
 
   return outers ?? hits;
+}
+
+/** An instance's last scan: the `className` it scanned, the register version it ran against, and the outers found. */
+type RememberedScan = { className: string; outers: readonly string[]; version: number };
+
+/**
+ * `outersIn`, skipped when this instance already scanned the same `className` against the same
+ * register (a new id since then can turn a miss into a hit). The sheet is not part of the memo: the
+ * caller still asks the current sheet which outers it has settled.
+ */
+function rememberedOutersIn(
+  memo: { current: RememberedScan | null },
+  className: string,
+  webStyle: WebStyle
+): readonly string[] {
+  const version = getRegisterVersion();
+  const last = memo.current;
+  if (last !== null && last.version === version && last.className === className) {
+    return last.outers;
+  }
+
+  const outers = outersIn(className, webStyle);
+  memo.current = { className, outers, version };
+
+  return outers;
 }
 
 /** The outers the sheet has not settled against the component `id`, or null when it knows them all. */
@@ -466,7 +492,13 @@ function useImpl<Props extends BaseObject>(
   // A styled component up the tree passes its classes down in `className`; its id in them makes it
   // an outer of this component (docs/react.md "Server component styles").
   const incomingClassName = context.className;
-  const outers = incomingClassName ? outersIn(incomingClassName, webStyle) : EMPTY_ARRAY;
+  // biome-ignore lint/correctness/useHookAtTopLevel: __SERVER__ and IS_RSC are build and load-time constants, so this branch is fixed for the whole bundle
+  const scanMemo = !__SERVER__ && !IS_RSC ? React.useRef<RememberedScan | null>(null) : null;
+  const outers = !incomingClassName
+    ? EMPTY_ARRAY
+    : scanMemo === null
+      ? outersIn(incomingClassName, webStyle)
+      : rememberedOutersIn(scanMemo, incomingClassName, webStyle);
 
   if (IS_RSC) {
     generatedStyle = rscFlush(webStyle, context, ssc.styleSheet, ssc.compiler);
