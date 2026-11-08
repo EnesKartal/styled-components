@@ -7,10 +7,6 @@
  * the SSR graph writes, and the part of that HTML the style registry holds.
  */
 
-/**
- * @jest-environment node
- */
-
 import React from 'react';
 import { renderPage, styleTags } from '../test/rscStream';
 

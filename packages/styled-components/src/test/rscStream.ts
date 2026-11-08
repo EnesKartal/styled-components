@@ -11,13 +11,7 @@ import { type FlightResult, readFlightPayload } from './flight';
 export const styleTags = (html: string): string[] =>
   [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(match => match[1]);
 
-/** Every `<style>` tag's rule text in rendered HTML, joined. */
-export const extractStyleContents = (html: string): string => styleTags(html).join('');
-
-/** The number of `<style>` tags in rendered HTML. */
-export const countStyleTags = (html: string): number => styleTags(html).length;
-
-/** The classes of the element with `id`, or of the first element that is not a `<style>` when `id` is omitted. */
+/** The classes of the element with `id`, or of the first element with a class when `id` is omitted. */
 export function classesOf(html: string, id?: string): string[] {
   const element =
     id === undefined
@@ -29,22 +23,11 @@ export function classesOf(html: string, id?: string): string[] {
   return classes[1].split(' ');
 }
 
-/** Whether a class carries an element's styles, as opposed to a component id (`sc-xxxx`, or `Name-sc-xxxx` with a build plugin). */
-export const isGeneratedClass = (name: string): boolean => !name.includes('sc-');
-
 /** The class an element's styles hang on: the last one, after its component ids. */
 export function generatedClass(html: string, id?: string): string {
   const classes = classesOf(html, id);
 
   return classes[classes.length - 1];
-}
-
-/** The class a style tag's first rule (`.name{...}`) targets: a wrapper's class, when the tag is the wrapper's own. */
-export function firstRuleClass(tag: string): string {
-  const match = /^\.(\w+)\{/.exec(tag);
-  if (match === null) throw new Error(`no class at the start of ${tag}`);
-
-  return match[1];
 }
 
 /** Marks `target` the way a bundler marks a reference to client code, so React treats it as one. */
@@ -54,69 +37,6 @@ export function fakeClientReference<Target extends object>(
 ): Target {
   return Object.assign(target, { $$typeof: Symbol.for('react.client.reference'), ...fields });
 }
-
-/** What a styled component's render function returns when it emits a tag: the tag, then the element. */
-type RenderedWithTag = ReactElement<{ children: ReactElement[] }>;
-
-/**
- * Run a memoized component's own render function inside a real render and
- * hand the `<style>` element it produced to `sink`. A render function that
- * returns an element, not a tree of host nodes, is what lets a test see the
- * element object itself.
- */
-function probeRender<Props extends object, Rendered extends React.ReactNode>(
-  Component: React.ExoticComponent<Props>,
-  props: Props,
-  takeStyle: (rendered: Rendered) => ReactElement,
-  sink: ReactElement[]
-): ReactElement {
-  const { type: render } = Component as React.ExoticComponent<Props> & {
-    type: (props: Props) => Rendered;
-  };
-  const Probe = () => {
-    const rendered = render(props);
-    sink.push(takeStyle(rendered));
-
-    return rendered;
-  };
-
-  return React.createElement(Probe);
-}
-
-/** {@link probeRender} for a styled component, whose render returns a fragment holding the tag first. */
-export const renderInProbe = <Props extends object>(
-  Component: React.ExoticComponent<Props>,
-  props: Props,
-  sink: ReactElement[]
-): ReactElement =>
-  probeRender<Props, RenderedWithTag>(
-    Component,
-    props,
-    rendered => rendered.props.children[0],
-    sink
-  );
-
-/**
- * {@link probeRender} for a global style, whose render returns the tag
- * array-wrapped: React's server-component serializer references a whole
- * element inside an array but only the props of a bare one.
- */
-export const renderGlobalInProbe = <Props extends object>(
-  Component: React.ExoticComponent<Props>,
-  props: Props,
-  sink: ReactElement[]
-): ReactElement =>
-  probeRender<Props, ReactElement[]>(
-    Component,
-    props,
-    rendered => {
-      expect(Array.isArray(rendered)).toBe(true);
-      expect(rendered).toHaveLength(1);
-
-      return rendered[0];
-    },
-    sink
-  );
 
 export type StreamedRender = {
   /** Each piece React wrote, in order. */
@@ -356,7 +276,7 @@ const reactServerBuild = (name: 'react' | 'react-dom'): object => {
 /** Loads the library as a server component host's RSC graph holds it: React's server build, and the shim's exports as client references. */
 export function loadRscGraph(options: GraphOptions = {}): RscGraph {
   const { loadLibrary = sourceLibrary } = options;
-  const mocked = ['react', 'react-dom'];
+  const mocked = ['react', 'react-dom', SERVER_STYLES_MODULE];
 
   try {
     return inFreshRegistry(() => {
@@ -365,7 +285,6 @@ export function loadRscGraph(options: GraphOptions = {}): RscGraph {
 
       const flight: FlightServer = require('react-server-dom-webpack/server.node');
 
-      mocked.push(SERVER_STYLES_MODULE);
       jest.doMock(SERVER_STYLES_MODULE, () =>
         Object.fromEntries(
           SERVER_STYLES_EXPORTS.map(name => [

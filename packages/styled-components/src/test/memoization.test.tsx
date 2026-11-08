@@ -24,6 +24,49 @@ function getDivClass(container: HTMLElement): string {
   return container.querySelector('div')!.className;
 }
 
+/**
+ * Wraps React's own `use*` exports to log the hook names a render calls. `restore` belongs in a
+ * `finally` around `install`: a throw partway through installation must not leave React
+ * half-patched for later tests.
+ */
+function createHookRecorder() {
+  // React's module namespace, typed as what it is here: a bag of hook functions keyed by name.
+  const reactHooks = React as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const hookNames = Object.keys(React).filter(
+    key => key.startsWith('use') && typeof reactHooks[key] === 'function'
+  );
+  const originals = new Map<string, (...args: unknown[]) => unknown>();
+  let recording: string[] | null = null;
+
+  return {
+    hookNames,
+    install() {
+      for (const name of hookNames) {
+        const original = reactHooks[name];
+        originals.set(name, original);
+        reactHooks[name] = (...args) => {
+          if (recording) recording.push(name);
+          return original(...args);
+        };
+      }
+    },
+    record<T>(renderFn: () => T): [T, string[]] {
+      const calls: string[] = [];
+      recording = calls;
+      try {
+        return [renderFn(), calls];
+      } finally {
+        // Cleared even when the render throws, so a later render cannot append
+        // to a dead array and turn one failure into a confusing second one.
+        recording = null;
+      }
+    },
+    restore() {
+      for (const [name, original] of originals) reactHooks[name] = original;
+    },
+  };
+}
+
 describe('memoization correctness', () => {
   it('returns same className on re-render with identical props', () => {
     const Comp = styled.div<{ $color: string }>`
@@ -397,33 +440,12 @@ describe('memoization correctness', () => {
    * `React.useX`; a named `import { useX } from 'react'` is invisible here.
    */
   it('runs a hook called inside an interpolation on every render pass (#5788)', () => {
-    // React's module namespace, typed as what it is here: a bag of hook
-    // functions keyed by name. Spelling it once keeps the casts out of the body.
-    const reactHooks = React as unknown as Record<string, (...args: unknown[]) => unknown>;
-    const hookNames = Object.keys(React).filter(
-      key => key.startsWith('use') && typeof reactHooks[key] === 'function'
-    );
+    const recorder = createHookRecorder();
+    const { record } = recorder;
     // React still exports hooks under `use*` names, so there is something to
     // wrap. That the wrapping actually intercepts the component's calls is a
     // separate question, answered by the non-empty segment assertion below.
-    expect(hookNames).toContain('useRef');
-
-    let recording: string[] | null = null;
-    // Restored in `finally`, which the install loop is inside: a throw partway
-    // through installation must not leave React half-patched for later tests.
-    const originals = new Map<string, (...args: unknown[]) => unknown>();
-
-    function record<T>(renderFn: () => T): [T, string[]] {
-      const calls: string[] = [];
-      recording = calls;
-      try {
-        return [renderFn(), calls];
-      } finally {
-        // Cleared even when the render throws, so a later render cannot append
-        // to a dead array and turn one failure into a confusing second one.
-        recording = null;
-      }
-    }
+    expect(recorder.hookNames).toContain('useRef');
 
     /**
      * The styled component renders before `StyleInjector`, so everything up to
@@ -447,14 +469,7 @@ describe('memoization correctness', () => {
     }
 
     try {
-      for (const name of hookNames) {
-        const original = reactHooks[name];
-        originals.set(name, original);
-        reactHooks[name] = (...args) => {
-          if (recording) recording.push(name);
-          return original(...args);
-        };
-      }
+      recorder.install();
 
       const ColorContext = React.createContext('red');
       const Comp = styled.div`
@@ -489,7 +504,7 @@ describe('memoization correctness', () => {
 
       unmount();
     } finally {
-      for (const [name, original] of originals) reactHooks[name] = original;
+      recorder.restore();
     }
   });
 
@@ -497,42 +512,23 @@ describe('memoization correctness', () => {
    * A styled component up the tree puts its id in the `className` a styled component below it
    * receives, and the lower one learns that edge from the scan of that string. The scan must not
    * add or drop a hook: the sequence a mount, a cache miss and a cache hit record is the same
-   * with and without a registered outer id in `className`. The recorder is a second copy of the
-   * one above (that one lives inside its test); the cut at the first `useSyncExternalStore` assumes
-   * the component under test never calls that hook itself, only `StyleInjector` does.
+   * with and without a registered outer id in `className`. The cut at the first
+   * `useSyncExternalStore` assumes the component under test never calls that hook itself, only
+   * `StyleInjector` does.
    */
   it('runs the same hooks with or without an outer component in className, on a miss and a hit', () => {
-    const reactHooks = React as unknown as Record<string, (...args: unknown[]) => unknown>;
-    const hookNames = Object.keys(React).filter(
-      key => key.startsWith('use') && typeof reactHooks[key] === 'function'
-    );
-    const originals = new Map<string, (...args: unknown[]) => unknown>();
-    let recording: string[] | null = null;
+    const recorder = createHookRecorder();
 
     /** The hooks one render calls, up to the injector's first hook (the component's own). */
     function record(renderFn: () => void): string[] {
-      const calls: string[] = [];
-      recording = calls;
-      try {
-        renderFn();
-      } finally {
-        recording = null;
-      }
-
+      const [, calls] = recorder.record(renderFn);
       const injectorStart = calls.indexOf('useSyncExternalStore');
 
       return injectorStart === -1 ? calls : calls.slice(0, injectorStart);
     }
 
     try {
-      for (const name of hookNames) {
-        const original = reactHooks[name];
-        originals.set(name, original);
-        reactHooks[name] = (...args) => {
-          if (recording) recording.push(name);
-          return original(...args);
-        };
-      }
+      recorder.install();
 
       const Outer = styled.div``;
       const Inner = styled.div<{ $color: string }>`
@@ -561,7 +557,7 @@ describe('memoization correctness', () => {
       expect(plain.hit).toEqual(plain.mount);
       expect(wrapped).toEqual(plain);
     } finally {
-      for (const [name, original] of originals) reactHooks[name] = original;
+      recorder.restore();
     }
   });
 
