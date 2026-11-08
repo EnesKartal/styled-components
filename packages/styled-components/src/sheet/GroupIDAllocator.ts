@@ -5,6 +5,8 @@ const MAX_SMI = 1 << 30;
 let groupIDRegister: Map<string, number> = new Map();
 let reverseRegister: Map<number, string> = new Map();
 let baseRegister: Map<number, number> = new Map();
+/** Development only; survives `resetGroupIds`, since a label belongs to a component definition. */
+const labelRegister: Map<string, string> = new Map();
 let nextFreeGroup = 1;
 let registerVersion = 0;
 
@@ -39,6 +41,18 @@ export const groupForId = (id: string): number => {
 
 export const idForGroup = (group: number): void | string => {
   return reverseRegister.get(group);
+};
+
+/** Records the name a component's author gave it, for development warnings that name it. */
+export const registerLabel = (id: string, label: string): void => {
+  labelRegister.set(id, label);
+};
+
+/** The name the author gave the component of `group`, when one was recorded. */
+export const labelForGroup = (group: number): string | undefined => {
+  const id = reverseRegister.get(group);
+
+  return id === undefined ? undefined : labelRegister.get(id);
 };
 
 /** The group of an id already registered, without allocating one. */

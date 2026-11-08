@@ -7,7 +7,17 @@
 // `react-server` export condition, so IS_RSC is true without mocking and
 // Flight's own task order (size-deferred elements, async resumption) decides
 // when each component renders. See docs/react.md "StyleSheetManager and
-// configureServerStyles in server components".
+// configureServerStyles in server components". The style components of the shim are client
+// references, as a host's bundler makes them, and a test reads the rules from their props.
+jest.mock('styled-components/server-styles', () => {
+  const { clientComponent } = jest.requireActual('../../test/flight');
+
+  return {
+    ScGlobalStyle: clientComponent('ScGlobalStyle'),
+    ScStyle: clientComponent('ScStyle'),
+  };
+});
+
 import React, { Fragment, Suspense, forwardRef, lazy, memo, type ReactNode } from 'react';
 import styled, {
   StyleSheetConsumer,
@@ -72,12 +82,36 @@ const ruleFor = (probe: Probe, { namespace, tag }: Scope): string => {
   return `${namespace ? `${namespace} ` : ''}.${className}{color:red;${tag ? `--${tag}:on;` : ''}}`;
 };
 
+/** The style components' props in a payload; Flight writes a rules array it already sent as a reference, read back here as the array. */
+const styleLevels = ({ clientProps }: FlightResult): Map<string, string[]> => {
+  const levels = new Map<string, string[]>();
+
+  for (const props of clientProps) {
+    if (!('chain' in props) || !Array.isArray(props.chain)) continue;
+
+    for (const [, name, rules] of props.chain as Array<[string, string, string[] | string]>) {
+      if (Array.isArray(rules)) levels.set(name, rules);
+    }
+  }
+
+  return levels;
+};
+
+/** The rules a probe carries: those of the style level named by its last class, or null when none was sent. */
+const cssOf = (result: FlightResult, probe: Probe): string | null => {
+  const rules = styleLevels(result).get(String(probe.className.split(' ').pop()));
+
+  return rules === undefined ? null : rules.join('');
+};
+
 /** Asserts exactly the expected probes rendered, each carrying the rule its scope calls for. */
 const expectScopes = (result: FlightResult, expected: Record<string, Scope>): void => {
   expect(result.errors).toEqual([]);
   expect(Object.keys(result.probes).sort()).toEqual(Object.keys(expected).sort());
   expect(
-    Object.fromEntries(Object.entries(result.probes).map(([id, probe]) => [id, probe.css]))
+    Object.fromEntries(
+      Object.entries(result.probes).map(([id, probe]) => [id, cssOf(result, probe)])
+    )
   ).toEqual(
     Object.fromEntries(
       Object.entries(expected).map(([id, scope]) => [id, ruleFor(result.probes[id], scope)])
@@ -170,7 +204,12 @@ describe('StyleSheetManager scope by position', () => {
     );
 
     expect(result.errors).toEqual([]);
-    expect([...result.globals].sort()).toEqual(['body{color:red;}', 'html{color:red;--outer:on;}']);
+    expect(
+      result.clientProps
+        .filter(props => 'rules' in props)
+        .flatMap(props => props.rules as string[])
+        .sort()
+    ).toEqual(['body{color:red;}', 'html{color:red;--outer:on;}']);
   });
 
   it('lets a nested manager without plugins keep the parent plugins and add its namespace', async () => {
@@ -692,7 +731,7 @@ describe('StyleSheetManager scope across a client component', () => {
     );
 
     expectScopes(result, { 'proto-key': { tag: 'outer' } });
-    const [props] = result.clientProps;
+    const [props] = result.clientProps.filter(sent => 'data' in sent);
     expect(Object.keys(Object(props.data))).toEqual(['__proto__', 'probe']);
     expect(Reflect.get(Object(props.data), '__proto__')).toEqual({ polluted: true });
   });
@@ -716,7 +755,11 @@ describe('StyleSheetManager scope across a client component', () => {
     );
 
     expectScopes(result, { outside: {}, reads: { tag: 'outer' } });
-    expect(result.clientProps.map(props => String(props.data).startsWith('$@'))).toEqual([true]);
+    expect(
+      result.clientProps
+        .filter(props => 'data' in props)
+        .map(props => String(props.data).startsWith('$@'))
+    ).toEqual([true]);
   });
 
   it('scopes a server element resolved inside a promise prop', async () => {

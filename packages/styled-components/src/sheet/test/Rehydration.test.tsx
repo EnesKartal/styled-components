@@ -1,9 +1,11 @@
+// These two load first: component ids keep their real hashes, and class names (loaded after utils mocks the generator) count a, b, c.
+import '../../utils/generateComponentId';
+import { resetStyled } from '../../test/utils';
 import React from 'react';
 
 import { render } from '@testing-library/react';
 import { ServerStyleSheet, StyleSheetManager } from '../../base';
 import { SC_ATTR, SC_ATTR_ACTIVE, SC_ATTR_VERSION, SC_VERSION, SPLITTER } from '../../constants';
-import { resetStyled } from '../../test/utils';
 import { resetWarnOnce } from '../../utils/warnOnce';
 import * as GroupIDAllocator from '../GroupIDAllocator';
 import { TIER, makeKey } from '../Order';

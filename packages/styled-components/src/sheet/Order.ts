@@ -1,6 +1,6 @@
-import { KEYFRAMES_ID_PREFIX } from '../constants';
+import { GLOBAL_ID_PREFIX, KEYFRAMES_ID_PREFIX } from '../constants';
 import { warnOnce } from '../utils/warnOnce';
-import { baseGroupOf, idForGroup } from './GroupIDAllocator';
+import { baseGroupOf, idForGroup, labelForGroup } from './GroupIDAllocator';
 
 /** Sort tier of a group: a lower value sorts first. */
 export const TIER = {
@@ -20,9 +20,6 @@ export const GROUP_KIND = {
 } as const;
 
 export type GroupKind = (typeof GROUP_KIND)[keyof typeof GROUP_KIND];
-
-/** Prefix of every `createGlobalStyle` id. */
-export const GLOBAL_ID_PREFIX = 'sc-global-';
 
 /**
  * Overrides a group's default key (client tier, its group number as seq): `server` puts it in the
@@ -76,7 +73,7 @@ export const keyFor = (kind: GroupKind, group: number, placement?: Placement): n
 
 const pairKey = (a: number, b: number) => (a < b ? a + ',' + b : b + ',' + a);
 
-const nameOf = (group: number) => idForGroup(group) ?? String(group);
+const nameOf = (group: number) => labelForGroup(group) ?? idForGroup(group) ?? String(group);
 
 /** The names of the cascade layers a top-level rule declares, or none when it is not an `@layer` rule. */
 const layerNamesOf = (rule: string): string[] => {

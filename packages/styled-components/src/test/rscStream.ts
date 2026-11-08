@@ -4,7 +4,7 @@ import { renderToPipeableStream } from 'react-dom/server';
 import { PassThrough, Writable } from 'stream';
 import * as timers from 'timers';
 import { TextDecoder, TextEncoder } from 'util';
-import { RSC_REDUNDANT_EMIT_WARN_THRESHOLD, SPLITTER } from '../constants';
+import { SPLITTER } from '../constants';
 import { type FlightResult, readFlightPayload } from './flight';
 
 /** The text of every `<style>` tag in rendered HTML, in document order. */
@@ -117,59 +117,6 @@ export const renderGlobalInProbe = <Props extends object>(
     },
     sink
   );
-
-/**
- * Registers the redundant-emit warning tests inside the caller's `describe`.
- * `renderMany(count)` renders `count` instances of one fresh style and returns
- * the warning text expected once the threshold is reached.
- */
-export function itWarnsOnRedundantEmits(options: {
-  marker: string;
-  renderMany: (count: number) => string;
-}): void {
-  const { marker, renderMany } = options;
-  const warnings = (warn: jest.SpyInstance) =>
-    warn.mock.calls.filter(([msg]) => typeof msg === 'string' && msg.includes(marker));
-
-  it('warns once when one style reaches the instance threshold in development', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-
-    try {
-      const expected = renderMany(RSC_REDUNDANT_EMIT_WARN_THRESHOLD + 5);
-
-      expect(warnings(warn)).toHaveLength(1);
-      expect(warnings(warn)[0][0]).toBe('[sc] ' + expected);
-    } finally {
-      warn.mockRestore();
-    }
-  });
-
-  it('stays quiet below the threshold', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-
-    try {
-      renderMany(RSC_REDUNDANT_EMIT_WARN_THRESHOLD - 1);
-
-      expect(warnings(warn)).toHaveLength(0);
-    } finally {
-      warn.mockRestore();
-    }
-  });
-
-  it('stays quiet in production', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    (global as { __DEV__: boolean }).__DEV__ = false;
-
-    try {
-      renderMany(RSC_REDUNDANT_EMIT_WARN_THRESHOLD + 5);
-
-      expect(warnings(warn)).toHaveLength(0);
-    } finally {
-      (global as { __DEV__: boolean }).__DEV__ = true;
-      warn.mockRestore();
-    }
-  });
-}
 
 export type StreamedRender = {
   /** Each piece React wrote, in order. */
@@ -418,33 +365,20 @@ export function loadRscGraph(options: GraphOptions = {}): RscGraph {
 
       const flight: FlightServer = require('react-server-dom-webpack/server.node');
 
-      // Mocking a name the resolver cannot find is a configuration error, so only a package that has the shim gets one.
-      if (hasServerStylesShim()) {
-        mocked.push(SERVER_STYLES_MODULE);
-        jest.doMock(SERVER_STYLES_MODULE, () =>
-          Object.fromEntries(
-            SERVER_STYLES_EXPORTS.map(name => [
-              name,
-              clientReference(flight, SERVER_STYLES_MODULE, name),
-            ])
-          )
-        );
-      }
+      mocked.push(SERVER_STYLES_MODULE);
+      jest.doMock(SERVER_STYLES_MODULE, () =>
+        Object.fromEntries(
+          SERVER_STYLES_EXPORTS.map(name => [
+            name,
+            clientReference(flight, SERVER_STYLES_MODULE, name),
+          ])
+        )
+      );
 
       return { flight, library: loadLibrary('rsc'), react: require('react') };
     });
   } finally {
     for (const name of mocked) jest.dontMock(name);
-  }
-}
-
-function hasServerStylesShim(): boolean {
-  try {
-    require.resolve(SERVER_STYLES_MODULE);
-
-    return true;
-  } catch {
-    return false;
   }
 }
 

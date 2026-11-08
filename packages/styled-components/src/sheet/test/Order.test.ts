@@ -1,5 +1,5 @@
 import { resetWarnOnce } from '../../utils/warnOnce';
-import { groupForId, registerBase, resetGroupIds } from '../GroupIDAllocator';
+import { groupForId, registerBase, registerLabel, resetGroupIds } from '../GroupIDAllocator';
 import { GROUP_KIND, GroupKind, Order, TIER, Tier, makeKey, serverSeqOf } from '../Order';
 
 const client = (group: number) => makeKey(TIER.client, group);
@@ -579,6 +579,28 @@ describe('cycle rule', () => {
 
       expect(warn.mock.calls.map(call => call[0])).toEqual([
         '[sc] "Base" wraps "Extension" here, but their order is already fixed, so "Base" stays where it is. Raise the specificity of the one that should win.',
+      ]);
+    });
+
+    it('names a component by its label when it has one, and by its id when it has none', () => {
+      const card = groupForId('sc-card');
+      const button = groupForId('sc-button');
+      const plain = groupForId('sc-plain');
+      registerLabel('sc-card', 'Card');
+      registerLabel('sc-button', 'Button');
+      const order = new Order();
+      for (const group of [card, button, plain]) {
+        order.place(group, client(group), GROUP_KIND.component);
+      }
+      order.learn(button, card);
+      order.learn(card, button);
+      registerBase('sc-plain', 'sc-card');
+      order.learn(card, plain);
+      order.learn(card, plain);
+
+      expect(warn.mock.calls.map(call => call[0])).toEqual([
+        '[sc] Components "Card" and "Button" wrap each other in different places, so their order falls back to definition order: "Button" sits after "Card" and overrides it wherever both style one element. Raise the specificity of the one that should win.',
+        '[sc] "Card" wraps "sc-plain" here, but their order is already fixed, so "Card" stays where it is. Raise the specificity of the one that should win.',
       ]);
     });
 

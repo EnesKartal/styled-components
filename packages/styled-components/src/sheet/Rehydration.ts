@@ -1,4 +1,11 @@
-import { SC_ATTR, SC_ATTR_ACTIVE, SC_ATTR_VERSION, SC_VERSION, SPLITTER } from '../constants';
+import {
+  IS_BROWSER,
+  SC_ATTR,
+  SC_ATTR_ACTIVE,
+  SC_ATTR_VERSION,
+  SC_VERSION,
+  SPLITTER,
+} from '../constants';
 import { InsertionTarget } from '../types';
 import { warnOnce } from '../utils/warnOnce';
 import { adoptGroupForId, idForGroup } from './GroupIDAllocator';
@@ -202,6 +209,21 @@ const warnOnVersionMismatch = (container: Document | ShadowRoot) => {
       return;
     }
   }
+};
+
+/** True when the page holds a server tag `sheet` has not adopted yet (adoption happens on its next write). */
+export const hasUnadoptedServerTags = (sheet: Sheet): boolean => {
+  if (!IS_BROWSER) return false;
+
+  const nodes = getRehydrationContainer(sheet.options.target).querySelectorAll<HTMLStyleElement>(
+    SELECTOR
+  );
+
+  for (let i = 0, l = nodes.length; i < l; i++) {
+    if (nodes[i].getAttribute(SC_ATTR) !== SC_ATTR_ACTIVE) return true;
+  }
+
+  return false;
 };
 
 /**

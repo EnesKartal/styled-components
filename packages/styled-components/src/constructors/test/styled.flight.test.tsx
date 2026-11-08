@@ -6,32 +6,82 @@
 // Renders with the real Flight server under the `react-server` export condition, so
 // Flight's own task order (async resumption, size-deferred elements) and its
 // request-scoped `React.cache` decide when each styled element renders and what it
-// can see. See docs/react.md "Order-proof extensions and wrappers".
+// can see. The shim's components are client references, as a host's bundler makes
+// them. See docs/react.md "Server component styles".
+jest.mock('styled-components/server-styles', () => {
+  const { clientComponent } = jest.requireActual('../../test/flight');
+
+  return {
+    ScGlobalStyle: clientComponent('ScGlobalStyle'),
+    ScStyle: clientComponent('ScStyle'),
+  };
+});
+
 import React from 'react';
+import { groupForId } from '../../sheet/GroupIDAllocator';
 import styled from '../../index';
 import {
   FILLER_PARAGRAPHS,
   Filler,
   clientComponent,
   renderFlight,
+  type FlightResult,
   type Probe,
 } from '../../test/flight';
 
 type PassedProps = { className?: string };
 
+type StyleProps = {
+  chain: Array<[string, string, string[], number]>;
+  keyframes: unknown[];
+  outers: Array<[string, number]>;
+};
+
 /** The classes of a probe element that are not component ids (`sc-xxxx`, or `Name-sc-xxxx` with a build plugin). */
 const generatedClasses = (probe: Probe): string[] =>
   probe.className.split(' ').filter(name => !name.includes('sc-'));
 
-/** A probe's CSS with its one generated class replaced by `X`, so apps compare by shape. */
-function shapeOf(probe: Probe): string | null {
-  const [generated] = generatedClasses(probe);
+const sorted = (list: StyleProps[]): StyleProps[] =>
+  [...list].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 
-  return probe.css === null ? null : probe.css.replaceAll(generated, 'X');
+/**
+ * The props of every style component the payload sends, ordered so a test need not know Flight's
+ * row order. A rules array Flight already sent is a reference to its row on the next level that
+ * carries it; it is read back as the array.
+ */
+function styleProps({ clientProps }: FlightResult): StyleProps[] {
+  type Sent = { chain: Array<[string, string, string[] | string, number]> } & Omit<
+    StyleProps,
+    'chain'
+  >;
+
+  const all = clientProps.filter(
+    (props): props is Sent & Record<string, unknown> => 'chain' in props
+  );
+  const sent = new Map<string, string[]>();
+
+  for (const { chain } of all) {
+    for (const [id, name, rules] of chain) {
+      if (Array.isArray(rules)) sent.set(id + ' ' + name, rules);
+    }
+  }
+
+  return sorted(
+    all.map(({ chain, keyframes, outers }) => ({
+      chain: chain.map(([id, name, rules, seq]) => [
+        id,
+        name,
+        Array.isArray(rules) ? rules : (sent.get(id + ' ' + name) ?? []),
+        seq,
+      ]),
+      keyframes,
+      outers,
+    }))
+  );
 }
 
-describe('wrapped styled components under Flight', () => {
-  it('folds a wrapper that resumes after an await into the element it renders', async () => {
+describe('styled components under Flight', () => {
+  it('sends the style of a wrapper that resumes after an await, and the outer it passes its classes through to', async () => {
     const Btn = styled.div`
       color: blue;
     `;
@@ -44,20 +94,37 @@ describe('wrapped styled components under Flight', () => {
       color: red;
     `;
 
-    const { errors, probes } = await renderFlight(
+    const result = await renderFlight(
       <main>
-        <Red data-probe="async" />
         <Btn data-probe="base" />
+        <Red data-probe="async" />
       </main>
     );
+    const [, blue, , red] = result.probes.async.className.split(' ');
+    const btn = [Btn.styledComponentId, blue, groupForId(Btn.styledComponentId)];
+    const outer = [Red.styledComponentId, groupForId(Red.styledComponentId)];
 
-    expect(errors).toEqual([]);
-    expect(generatedClasses(probes.async)).toHaveLength(1);
-    expect(shapeOf(probes.async)).toBe('.X{color:blue;}.X{color:red;}');
-    expect(shapeOf(probes.base)).toBe('.X{color:blue;}');
+    expect(result.errors).toEqual([]);
+    expect(
+      styleProps(result)
+        .map(({ chain, outers }) => ({
+          levels: chain.map(([id, name, , seq]) => [id, name, seq]),
+          outers,
+        }))
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+    ).toEqual(
+      [
+        { levels: [[...outer.slice(0, 1), red, outer[1]]], outers: [] },
+        { levels: [btn], outers: [outer] },
+        { levels: [btn], outers: [] },
+      ].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+    );
+    // Each rule reaches the payload once, however many elements carry it.
+    expect(result.payload.split(`.${blue}{color:blue;}`)).toHaveLength(2);
+    expect(result.payload.split(`.${red}{color:red;}`)).toHaveLength(2);
   });
 
-  it('folds a wrapper whose element Flight deferred behind a large sibling', async () => {
+  it('sends the outer of a wrapper whose element Flight deferred behind a large sibling', async () => {
     const Btn = styled.div`
       color: blue;
     `;
@@ -66,22 +133,27 @@ describe('wrapped styled components under Flight', () => {
       color: crimson;
     `;
 
-    const { probes } = await renderFlight(
+    const result = await renderFlight(
       <main>
+        <Btn data-probe="base" />
         <Filler />
         <Red data-probe="deferred" />
-        <Btn data-probe="base" />
       </main>
     );
+    const outer = [Red.styledComponentId, groupForId(Red.styledComponentId)];
 
-    expect(shapeOf(probes.deferred)).toBe('.X{color:blue;}.X{color:crimson;}');
-    expect(shapeOf(probes.base)).toBe('.X{color:blue;}');
+    expect(result.errors).toEqual([]);
+    expect(
+      styleProps(result)
+        .map(props => JSON.stringify(props.outers))
+        .sort()
+    ).toEqual([JSON.stringify([]), JSON.stringify([]), JSON.stringify([outer])].sort());
     // The case only means something when Flight deferred the filler's paragraphs, each into its own
     // row, so every row after them is numbered past them (rows are hex ids).
-    expect(parseInt(probes.deferred.row, 16)).toBeGreaterThan(FILLER_PARAGRAPHS);
+    expect(parseInt(result.probes.deferred.row, 16)).toBeGreaterThan(FILLER_PARAGRAPHS);
   });
 
-  it('folds a wrapper that reorders the classes it passes down', async () => {
+  it('finds the outer of a wrapper that reorders the classes it passes down', async () => {
     const Btn = styled.div`
       color: blue;
     `;
@@ -92,25 +164,33 @@ describe('wrapped styled components under Flight', () => {
       color: maroon;
     `;
 
-    const { probes } = await renderFlight(<Red />);
+    const result = await renderFlight(<Red />);
+    const inner = styleProps(result).find(props => props.chain[0][0] === Btn.styledComponentId);
 
-    expect(shapeOf(probes.reorder)).toBe('.X{color:blue;}.X{color:maroon;}');
+    expect(inner?.outers).toEqual([[Red.styledComponentId, groupForId(Red.styledComponentId)]]);
   });
 
-  it('passes a wrapper of a client component its own id and generated class, and emits that class rule', async () => {
+  it('passes a wrapper of a client component its own id and generated class, and sends the rule for that class', async () => {
     const Link = clientComponent<PassedProps>('Link');
     const Red = styled(Link)`
       color: tomato;
     `;
 
-    const { clientProps, errors, payload } = await renderFlight(<Red />);
-    const [id, generated] = String(clientProps[0].className).split(' ');
-    const rule = new RegExp(`"(\\.${generated}\\{[^"]*\\})"`).exec(payload)?.[1];
+    const result = await renderFlight(<Red />);
+    const link = result.clientProps.find(props => 'className' in props);
+    const [id, generated] = String(link?.className).split(' ');
 
-    expect(errors).toEqual([]);
-    expect(clientProps).toHaveLength(1);
+    expect(result.errors).toEqual([]);
     expect(id).toBe(Red.styledComponentId);
-    expect(rule).toBe(`.${generated}{color:tomato;}`);
+    expect(styleProps(result)).toEqual([
+      {
+        chain: [
+          [Red.styledComponentId, generated, [`.${generated}{color:tomato;}`], groupForId(id)],
+        ],
+        keyframes: [],
+        outers: [],
+      },
+    ]);
   });
 
   it('keeps two apps with colliding component ids and different rules apart when they render at once', async () => {
@@ -140,20 +220,36 @@ describe('wrapped styled components under Flight', () => {
       );
     };
 
+    /** Each component id with the rule of each level it carries, the generated class replaced by `X`. */
+    const rulesById = (result: FlightResult): Record<string, string[]> => {
+      const byId: Record<string, Set<string>> = {};
+
+      for (const { chain } of styleProps(result)) {
+        for (const [id, name, rules] of chain) {
+          byId[id] ??= new Set();
+          for (const rule of rules) byId[id].add(rule.replaceAll(name, 'X'));
+        }
+      }
+
+      return Object.fromEntries(Object.entries(byId).map(([id, rules]) => [id, [...rules]]));
+    };
+
     const [first, second] = await Promise.all([
       renderFlight(app('blue', 'red')),
       renderFlight(app('purple', 'green')),
     ]);
 
-    expect(new Set(Object.values(first.probes).map(shapeOf))).toEqual(
-      new Set(['.X{color:blue;}.X{color:red;}'])
-    );
-    expect(new Set(Object.values(second.probes).map(shapeOf))).toEqual(
-      new Set(['.X{color:purple;}.X{color:green;}'])
-    );
+    expect(rulesById(first)).toEqual({
+      'Btn-Btn-sc-1a2b3c': ['.X{color:blue;}'],
+      'Red-Red-sc-4d5e6f': ['.X{color:red;}'],
+    });
+    expect(rulesById(second)).toEqual({
+      'Btn-Btn-sc-1a2b3c': ['.X{color:purple;}'],
+      'Red-Red-sc-4d5e6f': ['.X{color:green;}'],
+    });
   });
 
-  it('does not let a wrapper class from one request fold rules into a later request', async () => {
+  it('does not let a class from one request name an outer in a later request', async () => {
     const Btn = styled.div`
       color: blue;
     `;
@@ -163,11 +259,23 @@ describe('wrapped styled components under Flight', () => {
     `;
 
     const first = await renderFlight(<Red data-probe="first" />);
-    const wrapper = /"\.(\w+)\{color:red;\}"/.exec(first.payload)?.[1];
+    const wrapper = generatedClasses(first.probes.first).find(name => name !== 'first');
     const second = await renderFlight(<Btn className={wrapper} data-probe="second" />);
 
     expect(wrapper).toBeDefined();
-    expect(generatedClasses(second.probes.second)[1]).toBe(wrapper);
-    expect(shapeOf(second.probes.second)).toBe('.X{color:blue;}');
+    expect(styleProps(second)).toEqual([
+      {
+        chain: [
+          [
+            Btn.styledComponentId,
+            generatedClasses(second.probes.second)[0],
+            [`.${generatedClasses(second.probes.second)[0]}{color:blue;}`],
+            groupForId(Btn.styledComponentId),
+          ],
+        ],
+        keyframes: [],
+        outers: [],
+      },
+    ]);
   });
 });

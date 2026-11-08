@@ -117,6 +117,117 @@ describe('extending', () => {
       `);
     });
 
+    describe('when an outer component renders an inner one defined after it', () => {
+      const warnings = () => (console.warn as jest.Mock).mock.calls.map(call => call[0]);
+
+      beforeEach(() => {
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+      });
+
+      it('sits after the inner component when it renders it through as', () => {
+        const Outer = styled.div`
+          color: red;
+        `;
+        const Inner = styled.div`
+          color: blue;
+        `;
+
+        render(<Outer as={Inner} />);
+
+        expect(getRenderedCSS()).toMatchInlineSnapshot(`
+          ".d {
+            color: blue;
+          }
+          .c {
+            color: red;
+          }"
+        `);
+      });
+
+      it('sits after the inner component when a plain component sits between them', () => {
+        const Between = ({ className }: { className?: string }) => <Inner className={className} />;
+        const Outer = styled(Between)`
+          color: red;
+        `;
+        const Inner = styled.div`
+          color: blue;
+        `;
+
+        render(<Outer />);
+
+        expect(getRenderedCSS()).toMatchInlineSnapshot(`
+          ".d {
+            color: blue;
+          }
+          .c {
+            color: red;
+          }"
+        `);
+      });
+
+      it('moves behind an inner component that first mounts after the outer was written alone', () => {
+        const Outer = styled.div`
+          color: red;
+        `;
+        const Inner = styled.div`
+          color: blue;
+        `;
+
+        render(<Outer />);
+        render(<Outer as={Inner} />);
+
+        expect(getRenderedCSS()).toMatchInlineSnapshot(`
+          ".d {
+            color: blue;
+          }
+          .c {
+            color: red;
+          }"
+        `);
+      });
+
+      it('falls back to definition order for two components that wrap each other, once, and keeps it', () => {
+        const First = styled.div.withConfig({ displayName: 'First' })`
+          color: red;
+        `;
+        const Second = styled.div.withConfig({ displayName: 'Second' })`
+          color: blue;
+        `;
+
+        render(<First as={Second} />);
+        const afterFirst = getRenderedCSS();
+
+        render(<Second as={First} />);
+        const afterSecond = getRenderedCSS();
+
+        render(<First as={Second} />);
+        render(<Second as={First} />);
+
+        expect(afterFirst).toMatchInlineSnapshot(`
+          ".d {
+            color: blue;
+          }
+          .c {
+            color: red;
+          }"
+        `);
+        expect(afterSecond).toMatchInlineSnapshot(`
+          ".c {
+            color: red;
+          }
+          .d {
+            color: blue;
+          }"
+        `);
+        expect(getRenderedCSS()).toBe(afterSecond);
+        expect(warnings()).toMatchInlineSnapshot(`
+          [
+            "[sc] Components "First" and "Second" wrap each other in different places, so their order falls back to definition order: "Second" sits after "First" and overrides it wherever both style one element. Raise the specificity of the one that should win.",
+          ]
+        `);
+      });
+    });
+
     describe('when overriding with another component', () => {
       it('should apply the outermost attrs color value alongside a new element target', () => {
         const Parent = styled.h1.attrs<{ color?: keyof typeof colors }>({ color: 'primary' })`

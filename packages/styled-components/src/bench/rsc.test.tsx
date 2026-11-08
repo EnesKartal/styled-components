@@ -4,8 +4,8 @@
  * Run: pnpm --filter styled-components bench:rsc
  *
  * Measures server-side renderToString performance with IS_RSC=true,
- * including per-instance inline style tag emission, extension chains,
- * wrapped components, and keyframe handling.
+ * including the style component each instance renders, extension chains,
+ * wrapped components, and keyframe handling. Output bytes are in rscBytes.test.tsx.
  */
 
 // Mock React.cache ; scoped per render via manual clear
@@ -24,6 +24,9 @@ jest.mock('react', () => {
 
 jest.mock('../utils/isRsc', () => ({ IS_RSC: true }));
 
+// The shim re-exports from the package entry, which is still loading when the shim first reads it.
+jest.mock('styled-components/server-styles', () => jest.requireActual('../models/ScStyle'));
+
 import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import styled, {
@@ -32,7 +35,7 @@ import styled, {
   StyleSheetManager,
   configureServerStyles,
 } from '../index';
-import rscPlugin from '../plugins/rsc';
+import rtlPlugin from '../plugins/rtl';
 
 import { bench as _bench } from './bench-utils';
 
@@ -169,7 +172,7 @@ describe('RSC benchmarks', () => {
   it('pages of 4000 elements (chains, user classes, wrappers)', () => {
     console.log('\n--- Pages of 4000 elements (20 iterations, median of 5) ---');
 
-    // 2000 instances per component trips the redundant-emit warning once per component.
+    // A render with no style registry warns once; the bench has none.
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     const A = styled.div<{ $i: number }>`
@@ -537,11 +540,11 @@ describe('RSC benchmarks', () => {
 
     bench('root StyleSheetManager with a plugin', 200, () => {
       ReactDOMServer.renderToString(
-        <StyleSheetManager plugins={[rscPlugin]}>{page}</StyleSheetManager>
+        <StyleSheetManager plugins={[rtlPlugin]}>{page}</StyleSheetManager>
       );
     });
 
-    configureServerStyles({ plugins: [rscPlugin] });
+    configureServerStyles({ plugins: [rtlPlugin] });
     try {
       bench('configured server plugins, no manager', 200, () => {
         ReactDOMServer.renderToString(page);
@@ -549,48 +552,5 @@ describe('RSC benchmarks', () => {
     } finally {
       configureServerStyles({ plugins: [] });
     }
-  });
-
-  it('output size', () => {
-    console.log('\n--- Output size ---');
-
-    const Card = styled.div`
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 24px;
-    `;
-    const Badge = styled.span<{ $variant: string }>`
-      color: ${p => p.$variant};
-      padding: 4px 8px;
-    `;
-
-    const colors = ['red', 'blue', 'green', 'orange', 'purple'];
-
-    mockCacheStore.clear();
-    const children = [];
-    for (let j = 0; j < 50; j++) {
-      children.push(
-        React.createElement(
-          Card,
-          { key: j },
-          React.createElement(Badge, { $variant: colors[j % colors.length] }, 'tag')
-        )
-      );
-    }
-    const html = ReactDOMServer.renderToString(React.createElement('div', null, ...children));
-
-    const styleTags = (html.match(/<style[^>]*>/g) || []).length;
-    const styleBytes = (html.match(/<style[^>]*>.*?<\/style>/gs) || []).reduce(
-      (sum, tag) => sum + tag.length,
-      0
-    );
-    const totalBytes = html.length;
-
-    console.log(`  50 cards with 5 badge variants:`);
-    console.log(`    Style tags: ${styleTags}`);
-    console.log(`    Style bytes: ${styleBytes}`);
-    console.log(`    Total HTML: ${totalBytes}`);
-    console.log(`    Style overhead: ${((styleBytes / totalBytes) * 100).toFixed(1)}%`);
   });
 });

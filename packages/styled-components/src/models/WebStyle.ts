@@ -110,7 +110,7 @@ export default class WebStyle {
     this.componentId = componentId;
     this.baseHash = phash(SEED, componentId);
     this.baseStyle = baseStyle;
-    StyleSheet.registerId(componentId);
+    StyleSheet.registerId(componentId, baseStyle?.componentId);
   }
 
   /**

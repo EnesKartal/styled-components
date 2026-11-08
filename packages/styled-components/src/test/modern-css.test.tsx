@@ -1,8 +1,10 @@
+// These two load first: component ids keep their real hashes, and class names (loaded after utils mocks the generator) count a, b, c.
+import '../utils/generateComponentId';
+import { getRenderedCSS, resetStyled } from './utils';
 import { render } from '@testing-library/react';
 import React from 'react';
 import { ThemeProvider } from '../base';
 import css from '../constructors/css';
-import { getRenderedCSS, resetStyled } from './utils';
 
 let styled: ReturnType<typeof resetStyled>;
 
