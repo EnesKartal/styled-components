@@ -8,6 +8,8 @@
  */
 import { createElement, type ReactNode } from 'react';
 import { Writable } from 'stream';
+// Node's own: a jsdom test environment has no global `TextDecoder`.
+import { TextDecoder } from 'util';
 
 type FlightServer = {
   createTemporaryReferenceSet: () => object;
@@ -24,7 +26,8 @@ type FlightServer = {
   ) => { pipe: (sink: Writable) => void };
 };
 
-const flight: FlightServer = require('react-server-dom-webpack/server.node');
+/** Loaded on first use: the server entry throws unless `react` resolves to its server build, and the two-graph harness imports this file without that. */
+const flightServer = (): FlightServer => require('react-server-dom-webpack/server.node');
 
 /** A component Flight serializes as a reference to client code (the body never runs on the server). */
 export function clientComponent<Props extends object>(name: string): (props: Props) => ReactNode {
@@ -32,7 +35,7 @@ export function clientComponent<Props extends object>(name: string): (props: Pro
     throw new Error(`client component "${name}" was called on the server`);
   };
 
-  return flight.registerClientReference(proxy, `client/${name}`, 'default');
+  return flightServer().registerClientReference(proxy, `client/${name}`, 'default');
 }
 
 /** How many paragraphs {@link Filler} renders. */
@@ -57,6 +60,7 @@ export const Filler = (): ReactNode =>
 
 /** A temporary reference as a server-action reply delivers one: a value from the client that the server can only pass back. */
 export async function temporaryReference(): Promise<unknown> {
+  const flight = flightServer();
   const decoded = await flight.decodeReply(
     '{"value":"$T"}',
     {},
@@ -217,6 +221,11 @@ function collect(
   return { clientProps, globals, probes };
 }
 
+/** Reads a whole payload: its probes, client elements and global style tags. */
+export function readFlightPayload(payload: Buffer, errors: string[]): FlightResult {
+  return { errors, payload: payload.toString('utf8'), ...collect(parseRows(payload)) };
+}
+
 /** Renders `tree` with the real Flight server and returns the probes found in the payload. */
 export function renderFlight(tree: ReactNode): Promise<FlightResult> {
   return new Promise(resolve => {
@@ -235,15 +244,10 @@ export function renderFlight(tree: ReactNode): Promise<FlightResult> {
     );
 
     sink.on('finish', () => {
-      const payload = Buffer.concat(chunks);
-      resolve({
-        errors,
-        payload: payload.toString('utf8'),
-        ...collect(parseRows(payload)),
-      });
+      resolve(readFlightPayload(Buffer.concat(chunks), errors));
     });
 
-    flight
+    flightServer()
       .renderToPipeableStream(tree, manifest, {
         onError: error => {
           errors.push(error instanceof Error ? error.message : String(error));

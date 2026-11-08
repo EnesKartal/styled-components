@@ -199,6 +199,9 @@ importers:
       lint-staged:
         specifier: ^15.4.3
         version: 15.5.2(supports-color@8.1.1)
+      styled-components:
+        specifier: workspace:*
+        version: link:packages/styled-components
 
   packages/benchmarks:
     dependencies:

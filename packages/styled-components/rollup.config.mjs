@@ -65,8 +65,8 @@ const defaultTypescriptPlugin = typescript({
 const nativeTypescriptPlugin = typescript({
   // The build breaks if the tests are included by the typescript plugin.
   // Since un-excluding them in tsconfig.json, we must explicitly exclude them
-  // here.
-  exclude: ['**/*.test.ts', '**/*.test.tsx', 'dist', 'src/test/types.tsx'],
+  // here. The server component shim is web-only: no declaration ships in `native/dist`.
+  exclude: ['**/*.test.ts', '**/*.test.tsx', 'dist', 'src/server-styles.ts', 'src/test/types.tsx'],
   outputToFilesystem: true,
   tsconfig: './tsconfig.json',
   compilerOptions: {
@@ -113,27 +113,35 @@ const basePlugins = [
   }),
 ];
 
-// this should always be last
-const minifierPlugin = terser({
-  compress: {
-    passes: 10,
-    keep_infinity: true,
-    pure_getters: true,
-  },
-  mangle: {
-    properties: {
-      regex: new RegExp(`^(${INTERNAL_PROPERTY_NAMES.join('|')})$`),
+/** `preamble` is raw text terser writes before the minified code, so sourcemap columns stay correct. */
+const createMinifier = preamble =>
+  terser({
+    compress: {
+      passes: 10,
+      keep_infinity: true,
+      pure_getters: true,
     },
-  },
-  ecma: 2020,
-  format: {
-    wrap_func_args: false,
-    comments: /^\s*([@#]__[A-Z]+__\s*$|@cc_on)/,
-    preserve_annotations: true,
-  },
-});
+    mangle: {
+      properties: {
+        regex: new RegExp(`^(${INTERNAL_PROPERTY_NAMES.join('|')})$`),
+      },
+    },
+    ecma: 2020,
+    format: {
+      wrap_func_args: false,
+      comments: /^\s*([@#]__[A-Z]+__\s*$|@cc_on)/,
+      preserve_annotations: true,
+      ...(preamble && { preamble }),
+    },
+  });
+
+// this should always be last
+const minifierPlugin = createMinifier();
 
 const commonPlugins = [defaultTypescriptPlugin, basePlugins];
+
+/** The server component shim; only the server build imports it. */
+const SERVER_STYLES_ID = 'styled-components/server-styles';
 
 const configBase = {
   input: './src/index.ts',
@@ -141,6 +149,8 @@ const configBase = {
   // \0 is rollup convention for generated in memory modules
   external: id => !id.startsWith('\0') && !id.startsWith('.') && !id.startsWith('/'),
   plugins: commonPlugins,
+  // An external import whose binding tree-shakes away would otherwise stay as a bare `import 'x'`.
+  treeshake: { moduleSideEffects: id => id !== SERVER_STYLES_ID },
 };
 
 const globals = { react: 'React', 'react-dom': 'ReactDOM' };
@@ -156,7 +166,7 @@ const standaloneBaseConfig = {
     sourcemap: true,
     exports: 'named',
   },
-  external: Object.keys(globals),
+  external: [...Object.keys(globals), SERVER_STYLES_ID],
   plugins: configBase.plugins.concat(
     replace({
       __SERVER__: JSON.stringify(false),
@@ -169,6 +179,7 @@ const standaloneBaseConfig = {
     })
   ),
   treeshake: {
+    ...configBase.treeshake,
     propertyReadSideEffects: false,
   },
 };
@@ -300,6 +311,22 @@ const pluginsConfig = {
   ),
 };
 
+/**
+ * Client-component shim for server component hosts. `styled-components` stays external
+ * (configBase.external), so the shim re-exports the host's own copy of the main entry instead of
+ * bundling a second one. Rollup drops a source directive and terser drops a banner, so the
+ * directive is terser's own preamble.
+ */
+const serverStylesConfig = {
+  ...configBase,
+  input: './src/server-styles.ts',
+  output: [
+    getESM({ file: 'dist/server-styles.esm.js' }),
+    getCJS({ file: 'dist/server-styles.cjs.js' }),
+  ],
+  plugins: configBase.plugins.concat(createMinifier("'use client';")),
+};
+
 const reanimatedConfig = {
   ...configBase,
   input: './src/native/reanimated/index.ts',
@@ -369,15 +396,18 @@ const allConfigs = [
   browserConfig,
   nativeConfig,
   pluginsConfig,
+  serverStylesConfig,
   reanimatedConfig,
   webBridgeConfig,
 ];
 
 /**
  * `SC_BUILD_ONLY=size` builds only the bundles the size metric reads (the
- * browser ESM and the standalone min.js); `scripts/size.mjs` sets it.
+ * browser ESM, the standalone min.js and the server component shim);
+ * `scripts/size.mjs` sets it.
  */
 const SIZE_BUNDLES = new Set([
+  'dist/server-styles.esm.js',
   'dist/styled-components.browser.esm.js',
   'dist/styled-components.min.js',
 ]);

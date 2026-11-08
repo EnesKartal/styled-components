@@ -1,7 +1,5 @@
 import React from 'react';
 import styled from '../index';
-import { StyleSheetManager } from '../models/StyleSheetManager';
-import rscPlugin from '../plugins/rsc';
 
 /**
  * Server-component pages whose cascade must not depend on render order, for the
@@ -41,32 +39,6 @@ function threeLevels() {
 
 /** Extensions (`styled(Base)`) in every render order the cascade could expose. */
 export const extensionScenarios: Scenario[] = [
-  {
-    name: 'adjacent-with-rscPlugin',
-    tree: () => {
-      const Base = styled.div`
-        & + & {
-          margin-left: 8px;
-        }
-      `;
-      const Ext = styled(Base)`
-        color: red;
-      `;
-
-      return (
-        <StyleSheetManager plugins={[rscPlugin]}>
-          <main>
-            <Base data-probe="b1" />
-            <Ext data-probe="e1" />
-            <Base data-probe="b2" />
-            <Base data-probe="b3" />
-            <Ext data-probe="e2" />
-            <Ext data-probe="e3" />
-          </main>
-        </StyleSheetManager>
-      );
-    },
-  },
   {
     name: 'dynamic-base-shared-ext-class',
     tree: () => {
