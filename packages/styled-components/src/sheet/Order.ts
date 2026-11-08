@@ -147,7 +147,7 @@ export class Order {
 
     for (const [inner, outers] of this.outers) copy.outers.set(inner, new Map(outers));
     for (const [key, pair] of this.contested) copy.contested.set(key, pair);
-    if (this.layerGroups !== undefined) {
+    if (__DEV__ && this.layerGroups !== undefined) {
       copy.layerGroups = new Map();
       for (const [name, groups] of this.layerGroups) copy.layerGroups.set(name, new Set(groups));
     }
@@ -315,6 +315,8 @@ export class Order {
 
   /** Development only: remember the layer names a rule declares, to warn when a move reorders them. */
   noteLayers(group: number, rule: string): void {
+    if (!__DEV__) return;
+
     const names = layerNamesOf(rule);
     if (names.length === 0) return;
 
@@ -602,6 +604,8 @@ export class Order {
 
   /** Development only: layer names by the position of the first group naming each. */
   private layerOrder(): string[] | undefined {
+    if (!__DEV__) return undefined;
+
     const layers = this.layerGroups;
     if (layers === undefined || layers.size < 2) return undefined;
 

@@ -65,10 +65,12 @@ const defaultTypescriptPlugin = typescript({
 const nativeTypescriptPlugin = typescript({
   // The build breaks if the tests are included by the typescript plugin.
   // Since un-excluding them in tsconfig.json, we must explicitly exclude them
-  // here. The server component shim is web-only: no declaration ships in `native/dist`.
+  // here. The server component shim is web-only: its tsconfig leaves the shim out of the
+  // program (the plugin's own exclude filters transforms, not declaration emit, and web-only
+  // sources that import the shim stay in the program, so the subpath maps to the element source).
   exclude: ['**/*.test.ts', '**/*.test.tsx', 'dist', 'src/server-styles.ts', 'src/test/types.tsx'],
   outputToFilesystem: true,
-  tsconfig: './tsconfig.json',
+  tsconfig: './tsconfig.native.json',
   compilerOptions: {
     outDir: 'native/dist',
     noEmit: false,

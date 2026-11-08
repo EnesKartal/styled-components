@@ -98,10 +98,10 @@ export function removeInstance(
 
 /** What writing one global instance needs beyond its entry. */
 type WriteOptions = {
-  /** True for a global whose CSS carries no function, so every mount shares one name. */
-  isStatic: boolean;
   /** Where the id's group sorts on its first insert. */
   placement?: Placement | undefined;
+  /** True for a global whose CSS carries no function, so every mount shares one name. */
+  sharesName: boolean;
 };
 
 /** Write an instance's entry to the sheet: its keyframes first, then its rules. */
@@ -110,7 +110,7 @@ export function writeInstance(
   componentId: string,
   instance: string,
   entry: InstanceEntry,
-  { isStatic, placement }: WriteOptions
+  { placement, sharesName }: WriteOptions
 ): void {
   const instances = instancesFor(styleSheet, componentId);
   const prev = instances.get(instance);
@@ -118,7 +118,7 @@ export function writeInstance(
   // Static globals share identical CSS across mounts, so the registered name
   // is `componentId` alone; dedups multi-mount and decouples rehydration
   // from React's useId format.
-  const known = isStatic && styleSheet.hasNameForId(componentId, componentId);
+  const known = sharesName && styleSheet.hasNameForId(componentId, componentId);
   if (known && prev) return;
 
   // Keyframes sort ahead of the global rules in the sheet (group IDs were
@@ -126,7 +126,7 @@ export function writeInstance(
   flushKeyframes(styleSheet, entry.keyframes, placement?.server ? SERVER_PLACEMENT : undefined);
   instances.set(instance, entry);
 
-  if (isStatic) {
+  if (sharesName) {
     // A rehydrated or sibling-mounted style only records its entry, so
     // rebuildGroup can restore survivors if another instance unmounts.
     if (!known) styleSheet.insertRules(componentId, entry.name, entry.rules, placement);
@@ -181,7 +181,7 @@ export default class WebGlobalStyle<Props extends object> {
 
   /** Write what `computeRules` returned to the sheet. */
   renderStyles(instance: string, entry: InstanceEntry, styleSheet: StyleSheet): void {
-    writeInstance(styleSheet, this.componentId, instance, entry, { isStatic: this.isStatic });
+    writeInstance(styleSheet, this.componentId, instance, entry, { sharesName: this.isStatic });
   }
 
   /**

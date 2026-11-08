@@ -108,7 +108,7 @@ export function ScGlobalStyle({ id, keyframes, rules, seq }: ScGlobalStyleProps)
         name: id + instance,
         rules,
       },
-      writeOptions: { isStatic: false, placement: { seq, server: true } },
+      writeOptions: { placement: { seq, server: true }, sharesName: false },
     }),
     [id, instance, keyframes, rules, seq]
   );

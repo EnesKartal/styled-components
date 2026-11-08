@@ -393,11 +393,11 @@ describe('server component shim', () => {
     'plugins.cjs.js',
     'plugins.esm.js',
   ])('%s never reaches the shim', file => {
-    expect(read(file)).not.toContain('server-styles');
+    expect(read(file)).not.toContain(shimName);
   });
 
   it.each(jsFiles(nativeDistDir))('native/%s never reaches the shim', file => {
-    expect(readNative(file)).not.toContain('server-styles');
+    expect(readNative(file)).not.toContain(shimName);
   });
 
   it.each(['styled-components.js', 'styled-components.min.js'])(

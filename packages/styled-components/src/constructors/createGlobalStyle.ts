@@ -68,7 +68,7 @@ export default function createGlobalStyle<Props extends object>(
     // Not `__SERVER__`: the server build has no insertion effects below, so a
     // write here under jsdom would pile up with no cleanup. A sheet forced into
     // server mode under a build where `__SERVER__` is false needs the runtime
-    // flag too. A server component writes nothing: `ScGlobalStyle` carries its rules.
+    // flag too. A server component writes nothing: its rules travel in the element it renders (see docs/react.md "Server component styles").
     const writesInRender = !IS_RSC && ssc.styleSheet.server;
 
     // A server render with no sheet to collect the result has no use for it.
