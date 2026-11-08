@@ -251,6 +251,29 @@ describe('extending', () => {
         expect(extractCSS(second)).toBe(innerThenOuter);
       });
 
+      it('learns an outer whose id was registered after an earlier render of the same className', () => {
+        const Inner = styled.div`
+          color: blue;
+        `;
+        const sheet = new StyleSheet();
+        const lateId = 'sc-late';
+        // A changed prop makes the memoized instance render again with the same className.
+        const tree = (pass: number) => (
+          <StyleSheetManager sheet={sheet}>
+            <Inner className={lateId} data-pass={pass} />
+          </StyleSheetManager>
+        );
+
+        const { rerender } = render(tree(1));
+
+        expect(sheet.isSettled(lateId, Inner.styledComponentId)).toBe(false);
+
+        StyleSheet.registerId(lateId);
+        rerender(tree(2));
+
+        expect(sheet.isSettled(lateId, Inner.styledComponentId)).toBe(true);
+      });
+
       it('falls back to definition order for two components that wrap each other, once, and keeps it', () => {
         const First = styled.div.withConfig({ displayName: 'First' })`
           color: red;
