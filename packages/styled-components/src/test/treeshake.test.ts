@@ -585,8 +585,9 @@ describe('bundle size', () => {
     // arity-2 attrs tracing with its runtime fallback, and the server entry
     // points a consumer bundle would shake away. Holds the security fix that keeps
     // malformed CSS inside its statement, `createGlobalStyle` interpolations in render,
-    // and at-rules whose bodies are declaration blocks (`@view-transition`, `@page` margin boxes).
-    expect(sizeKB).toBeLessThan(15.15);
+    // and at-rules whose bodies are declaration blocks (`@view-transition`, `@page` margin boxes),
+    // and the sheet's cascade order (wrappers after what they wrap, tiers, contested pairs).
+    expect(sizeKB).toBeLessThan(18.45);
   });
   it('production bundle size with real bundler tree-shaking', async () => {
     const zlib = require('zlib');
@@ -627,8 +628,9 @@ describe('bundle size', () => {
     // the global-style instance registry shared across colliding ids.
     // v6.4.1 for this same entry is 11.44kB gzip. Holds the security fix that keeps
     // malformed CSS inside its statement, `createGlobalStyle` interpolations in render,
-    // and at-rules whose bodies are declaration blocks (`@view-transition`, `@page` margin boxes).
-    expect(sizeKB).toBeLessThan(14);
+    // and at-rules whose bodies are declaration blocks (`@view-transition`, `@page` margin boxes),
+    // and the sheet's cascade order, which every client sheet runs.
+    expect(sizeKB).toBeLessThan(17.25);
   }, 30000);
 });
 
